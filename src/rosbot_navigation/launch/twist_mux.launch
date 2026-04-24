@@ -1,0 +1,10 @@
+<launch>
+  <arg name="enable_ir_safety" default="true"/>
+
+  <node pkg="twist_mux" type="twist_mux" name="twist_mux" output="screen">
+    <rosparam command="load" file="$(find rosbot_navigation)/config/twist_mux.yaml"/>
+    <remap from="cmd_vel_out" to="/cmd_vel"/>
+  </node>
+
+  <node if="$(arg enable_ir_safety)" pkg="rosbot_navigation" type="ir_safety_stop.py" name="ir_safety_stop" output="screen"/>
+</launch>

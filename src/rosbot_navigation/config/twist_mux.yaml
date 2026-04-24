@@ -1,0 +1,13 @@
+topics:
+  - name: safety
+    topic: /cmd_vel_safety
+    timeout: 0.30
+    priority: 255
+  - name: visual_servo
+    topic: /cmd_vel_servo
+    timeout: 0.30
+    priority: 120
+  - name: navigation
+    topic: /cmd_vel_nav
+    timeout: 0.60
+    priority: 50

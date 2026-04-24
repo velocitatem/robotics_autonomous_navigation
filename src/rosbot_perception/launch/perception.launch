@@ -1,0 +1,6 @@
+<launch>
+  <arg name="config" default="$(find rosbot_perception)/config/perception.yaml"/>
+  <rosparam file="$(arg config)" command="load"/>
+
+  <node pkg="rosbot_perception" type="perception_node.py" name="perception_node" output="screen"/>
+</launch>

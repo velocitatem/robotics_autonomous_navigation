@@ -1,0 +1,11 @@
+servo_load_topic: /servoLoad
+gripper_command_topic: /gripper/command
+
+open_angle: 1.15
+close_angle: 0.22
+angle_step: 0.03
+step_sleep_sec: 0.06
+
+default_load_baseline: 0.18
+load_spike_threshold: 0.55
+release_pause_sec: 0.20

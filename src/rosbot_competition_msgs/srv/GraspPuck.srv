@@ -1,0 +1,6 @@
+string color
+---
+bool success
+float32 peak_load
+float32 final_angle
+string message

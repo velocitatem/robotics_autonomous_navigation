@@ -1,0 +1,15 @@
+<launch>
+  <arg name="enable_slam" default="true"/>
+  <arg name="enable_move_base" default="true"/>
+  <arg name="use_slam_toolbox" default="true"/>
+  <arg name="enable_ir_safety" default="true"/>
+
+  <include if="$(arg enable_slam)" file="$(find rosbot_navigation)/launch/slam.launch">
+    <arg name="use_slam_toolbox" value="$(arg use_slam_toolbox)"/>
+  </include>
+
+  <include if="$(arg enable_move_base)" file="$(find rosbot_navigation)/launch/move_base.launch"/>
+  <include file="$(find rosbot_navigation)/launch/twist_mux.launch">
+    <arg name="enable_ir_safety" value="$(arg enable_ir_safety)"/>
+  </include>
+</launch>

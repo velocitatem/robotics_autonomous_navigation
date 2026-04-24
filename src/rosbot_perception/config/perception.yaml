@@ -1,0 +1,35 @@
+map_frame: map
+camera_frame: ""
+
+color_topic: /camera/color/image_raw
+depth_topic: /camera/depth/image_raw
+camera_info_topic: /camera/color/camera_info
+
+depth_scale: 0.001
+min_depth_m: 0.10
+max_depth_m: 2.50
+
+min_contour_area: 450
+depth_patch_radius_px: 2
+publish_cooldown_sec: 0.40
+min_publish_distance_m: 0.05
+
+hsv_ranges:
+  red:
+    - lower: [0, 110, 80]
+      upper: [10, 255, 255]
+    - lower: [170, 110, 80]
+      upper: [180, 255, 255]
+  green:
+    - lower: [35, 80, 70]
+      upper: [85, 255, 255]
+  blue:
+    - lower: [95, 80, 60]
+      upper: [135, 255, 255]
+
+aruco:
+  dictionary: DICT_4X4_50
+  marker_color_map:
+    1: red
+    2: green
+    3: blue

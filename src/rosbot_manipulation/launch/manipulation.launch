@@ -1,0 +1,6 @@
+<launch>
+  <arg name="config" default="$(find rosbot_manipulation)/config/manipulation.yaml"/>
+  <rosparam file="$(arg config)" command="load"/>
+
+  <node pkg="rosbot_manipulation" type="manipulation_node.py" name="manipulation_node" output="screen"/>
+</launch>
