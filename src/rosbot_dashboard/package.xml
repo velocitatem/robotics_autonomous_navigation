@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>rosbot_perception</name>
+  <name>rosbot_dashboard</name>
   <version>0.1.0</version>
-  <description>RGB-D perception and TF projection for ROSbot competition.</description>
+  <description>PyQt dashboard for ROSbot mission monitoring.</description>
 
   <maintainer email="dev@example.com">ROSbot Dev</maintainer>
   <license>MIT</license>
@@ -10,28 +10,20 @@
   <buildtool_depend>catkin</buildtool_depend>
 
   <build_depend>cv_bridge</build_depend>
-  <build_depend>geometry_msgs</build_depend>
-  <build_depend>image_transport</build_depend>
-  <build_depend>image_geometry</build_depend>
-  <build_depend>message_filters</build_depend>
+  <build_depend>nav_msgs</build_depend>
   <build_depend>rosbot_competition_msgs</build_depend>
   <build_depend>rospy</build_depend>
   <build_depend>sensor_msgs</build_depend>
   <build_depend>std_msgs</build_depend>
-  <build_depend>tf2_geometry_msgs</build_depend>
   <build_depend>tf2_ros</build_depend>
 
   <exec_depend>cv_bridge</exec_depend>
-  <exec_depend>geometry_msgs</exec_depend>
-  <exec_depend>image_transport</exec_depend>
-  <exec_depend>image_geometry</exec_depend>
-  <exec_depend>message_filters</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
   <exec_depend>python3-opencv</exec_depend>
   <exec_depend>rosbot_competition_msgs</exec_depend>
   <exec_depend>rospy</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
-  <exec_depend>tf2_geometry_msgs</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
 
   <export/>

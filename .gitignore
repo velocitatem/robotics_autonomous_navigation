@@ -4,3 +4,6 @@ install/
 logs/
 *.pyc
 __pycache__/
+.ruff_cache/
+.pytest_cache/
+.catkin_workspace

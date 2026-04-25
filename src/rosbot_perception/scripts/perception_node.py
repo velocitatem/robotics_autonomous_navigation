@@ -9,9 +9,9 @@ import rospy
 import tf2_ros
 from cv_bridge import CvBridge, CvBridgeError
 from geometry_msgs.msg import Point, PointStamped
-from rosbot_competition_msgs.msg import SpatialDetection
+from rosbot_competition_msgs.msg import SpatialDetection, MissionEvent
 from sensor_msgs.msg import CameraInfo, Image
-from std_msgs.msg import String
+from image_geometry import PinholeCameraModel
 
 
 class PerceptionNode:
@@ -65,8 +65,9 @@ class PerceptionNode:
         self.annotated_pub = rospy.Publisher(
             "/perception/annotated_image", Image, queue_size=1
         )
-        self.event_pub = rospy.Publisher("/mission_events", String, queue_size=30)
+        self.event_pub = rospy.Publisher("/mission_events", MissionEvent, queue_size=30)
 
+        self.camera_model = PinholeCameraModel()
         self.camera_info_sub = rospy.Subscriber(
             self.camera_info_topic, CameraInfo, self._on_camera_info, queue_size=1
         )
@@ -97,6 +98,7 @@ class PerceptionNode:
         return aruco, dictionary, detector
 
     def _on_camera_info(self, msg):
+        self.camera_model.fromCameraInfo(msg)
         self.fx = msg.K[0]
         self.fy = msg.K[4]
         self.cx = msg.K[2]
@@ -188,7 +190,17 @@ class PerceptionNode:
         detections = []
         image_area = float(overlay.shape[0] * overlay.shape[1])
 
+        # Find known colors to skip processing them
+        known_colors = set()
+        for key in self.last_detection.keys():
+            if key.startswith("puck:"):
+                color = key.split(":")[1]
+                known_colors.add(color)
+
         for color_name, ranges in self.hsv_ranges.items():
+            if color_name in known_colors:
+                continue  # Optimization: stop running HSV on known pucks
+
             mask = np.zeros(hsv.shape[:2], dtype=np.uint8)
             for hsv_range in ranges:
                 lower = np.array(hsv_range["lower"], dtype=np.uint8)
@@ -292,8 +304,10 @@ class PerceptionNode:
         if z is None:
             return
 
-        x = (float(u) - self.cx) * z / self.fx
-        y = (float(v) - self.cy) * z / self.fy
+        ray = self.camera_model.projectPixelTo3dRay((u, v))
+        ray_z = ray[2]
+        x = ray[0] * (z / ray_z)
+        y = ray[1] * (z / ray_z)
 
         source = PointStamped()
         source.header.stamp = stamp
@@ -327,15 +341,16 @@ class PerceptionNode:
         self.det_pub.publish(msg)
 
         cv2.circle(overlay, (u, v), 7, (0, 255, 255), 2)
-        self.event_pub.publish(
-            f"[VISION] Mapped {color} {object_class} at ({map_point.point.x:.2f}, {map_point.point.y:.2f})"
-        )
+
+        event_msg = MissionEvent()
+        event_msg.level = "INFO"
+        event_msg.message = f"[VISION] Mapped {color} {object_class} at ({map_point.point.x:.2f}, {map_point.point.y:.2f})"
+        self.event_pub.publish(event_msg)
 
     def _should_publish(self, key, current_point, stamp):
         previous = self.last_detection.get(key)
-        self.last_detection[key] = (stamp, current_point)
-
         if previous is None:
+            self.last_detection[key] = (stamp, current_point)
             return True
 
         previous_stamp, previous_point = previous
@@ -343,9 +358,10 @@ class PerceptionNode:
         distance = math.hypot(
             current_point.x - previous_point.x, current_point.y - previous_point.y
         )
-        return (
-            dt >= self.publish_cooldown_sec or distance >= self.min_publish_distance_m
-        )
+        if dt >= self.publish_cooldown_sec or distance >= self.min_publish_distance_m:
+            self.last_detection[key] = (stamp, current_point)
+            return True
+        return False
 
     def _sample_depth(self, depth_m, u, v):
         height, width = depth_m.shape[:2]

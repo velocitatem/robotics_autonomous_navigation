@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
-import math
-
+import collections
 import rospy
 from rosbot_competition_msgs.srv import GraspPuck, GraspPuckResponse
+from rosbot_competition_msgs.msg import MissionEvent
 from std_msgs.msg import Float32, Float64, String
 from std_srvs.srv import Trigger, TriggerResponse
 
@@ -23,16 +23,15 @@ class ManipulationNode:
         self.default_load_baseline = float(
             rospy.get_param("~default_load_baseline", 0.18)
         )
-        self.load_spike_threshold = float(
-            rospy.get_param("~load_spike_threshold", 0.55)
-        )
+        self.load_spike_threshold = float(rospy.get_param("~load_spike_threshold", 1.5))
         self.release_pause_sec = float(rospy.get_param("~release_pause_sec", 0.2))
 
+        self.load_history = collections.deque(maxlen=10)
         self.latest_load = self.default_load_baseline
         self.have_load = False
 
         self.command_pub = rospy.Publisher(self.command_topic, Float64, queue_size=5)
-        self.event_pub = rospy.Publisher("/mission_events", String, queue_size=30)
+        self.event_pub = rospy.Publisher("/mission_events", MissionEvent, queue_size=30)
         self.load_sub = rospy.Subscriber(
             self.servo_load_topic, Float32, self._on_servo_load, queue_size=5
         )
@@ -46,14 +45,20 @@ class ManipulationNode:
         rospy.loginfo("[GRIPPER] Manipulation node online")
 
     def _on_servo_load(self, msg):
-        self.latest_load = float(msg.data)
+        val = float(msg.data)
+        self.latest_load = val
+        self.load_history.append(val)
         self.have_load = True
 
     def _publish_angle(self, angle):
         self.command_pub.publish(Float64(data=float(angle)))
 
     def _on_grasp_request(self, request):
-        baseline = self.latest_load if self.have_load else self.default_load_baseline
+        if self.have_load and len(self.load_history) > 0:
+            baseline = sum(self.load_history) / len(self.load_history)
+        else:
+            baseline = self.default_load_baseline
+
         direction = -1.0 if self.open_angle > self.close_angle else 1.0
         angle = self.open_angle
         peak_load = baseline
@@ -73,6 +78,11 @@ class ManipulationNode:
             rospy.sleep(self.step_sleep_sec)
 
             current_load = self.latest_load if self.have_load else baseline
+
+            # Update baseline dynamically as rolling average if not spiking
+            if len(self.load_history) > 0:
+                baseline = sum(self.load_history) / len(self.load_history)
+
             peak_load = max(peak_load, current_load)
             if (current_load - baseline) >= self.load_spike_threshold:
                 success = True
@@ -82,9 +92,10 @@ class ManipulationNode:
             self._publish_angle(self.close_angle)
 
         status = "successful" if success else "failed"
-        msg = f"[GRIPPER] Grasp {status}. PeakLoad={peak_load:.2f} baseline={baseline:.2f} target={request.color}"
-        self.event_pub.publish(msg)
-        rospy.loginfo(msg)
+        msg_text = f"[GRIPPER] Grasp {status}. PeakLoad={peak_load:.2f} baseline={baseline:.2f} target={request.color}"
+        event_msg = MissionEvent(level="INFO", message=msg_text)
+        self.event_pub.publish(event_msg)
+        rospy.loginfo(msg_text)
 
         response = GraspPuckResponse()
         response.success = success
@@ -97,9 +108,10 @@ class ManipulationNode:
         self._publish_angle(self.open_angle)
         rospy.sleep(max(0.0, self.release_pause_sec))
 
-        msg = f"[GRIPPER] Released puck at angle {self.open_angle:.2f}"
-        self.event_pub.publish(msg)
-        rospy.loginfo(msg)
+        msg_text = f"[GRIPPER] Released puck at angle {self.open_angle:.2f}"
+        event_msg = MissionEvent(level="INFO", message=msg_text)
+        self.event_pub.publish(event_msg)
+        rospy.loginfo(msg_text)
         return TriggerResponse(success=True, message="released")
 
 

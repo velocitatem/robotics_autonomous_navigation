@@ -1,0 +1,8 @@
+.git/
+build/
+devel/
+install/
+logs/
+.ruff_cache/
+**/__pycache__/
+**/*.pyc

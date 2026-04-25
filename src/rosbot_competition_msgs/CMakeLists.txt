@@ -10,6 +10,7 @@ find_package(catkin REQUIRED COMPONENTS
 add_message_files(
   FILES
   SpatialDetection.msg
+  MissionEvent.msg
 )
 
 add_service_files(

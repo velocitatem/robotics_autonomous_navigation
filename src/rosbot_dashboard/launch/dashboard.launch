@@ -1,0 +1,6 @@
+<launch>
+  <arg name="config" default="$(find rosbot_dashboard)/config/dashboard.yaml"/>
+  <node pkg="rosbot_dashboard" type="dashboard_node.py" name="dashboard_node" output="screen">
+    <rosparam file="$(arg config)" command="load"/>
+  </node>
+</launch>

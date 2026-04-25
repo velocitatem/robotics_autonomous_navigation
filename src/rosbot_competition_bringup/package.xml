@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>rosbot_competition_bringup</name>
+  <version>0.1.0</version>
+  <description>Top-level launch orchestration for ROSbot competition.</description>
+
+  <maintainer email="dev@example.com">ROSbot Dev</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <exec_depend>rosbot_dashboard</exec_depend>
+  <exec_depend>rosbot_manipulation</exec_depend>
+  <exec_depend>rosbot_mission_control</exec_depend>
+  <exec_depend>rosbot_navigation</exec_depend>
+  <exec_depend>rosbot_perception</exec_depend>
+
+  <export/>
+</package>

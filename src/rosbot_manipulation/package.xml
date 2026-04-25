@@ -4,7 +4,7 @@
   <version>0.1.0</version>
   <description>Gripper control and load-feedback grasp validation for ROSbot.</description>
 
-  <maintainer email="dev@localhost">ROSbot Dev</maintainer>
+  <maintainer email="dev@example.com">ROSbot Dev</maintainer>
   <license>MIT</license>
 
   <buildtool_depend>catkin</buildtool_depend>

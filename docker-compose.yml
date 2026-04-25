@@ -1,0 +1,21 @@
+services:
+  rosbot-dev:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: rosbot-competition:noetic
+    network_mode: host
+    ipc: host
+    working_dir: /ws
+    stdin_open: true
+    tty: true
+    environment:
+      ROS_MASTER_URI: ${ROS_MASTER_URI:-http://localhost:11311}
+      ROS_IP: ${ROS_IP:-127.0.0.1}
+      DISPLAY: ${DISPLAY:-:0}
+      QT_X11_NO_MITSHM: "1"
+      XAUTHORITY: /tmp/.docker.xauth
+    volumes:
+      - ./:/ws
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ${HOME}/.Xauthority:/tmp/.docker.xauth:rw

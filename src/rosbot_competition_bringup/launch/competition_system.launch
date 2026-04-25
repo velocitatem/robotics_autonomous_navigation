@@ -1,0 +1,19 @@
+<launch>
+  <arg name="enable_slam" default="true"/>
+  <arg name="enable_move_base" default="true"/>
+  <arg name="use_slam_toolbox" default="true"/>
+  <arg name="enable_ir_safety" default="true"/>
+  <arg name="enable_dashboard" default="true"/>
+
+  <include file="$(find rosbot_navigation)/launch/navigation.launch">
+    <arg name="enable_slam" value="$(arg enable_slam)"/>
+    <arg name="enable_move_base" value="$(arg enable_move_base)"/>
+    <arg name="use_slam_toolbox" value="$(arg use_slam_toolbox)"/>
+    <arg name="enable_ir_safety" value="$(arg enable_ir_safety)"/>
+  </include>
+
+  <include file="$(find rosbot_perception)/launch/perception.launch"/>
+  <include file="$(find rosbot_manipulation)/launch/manipulation.launch"/>
+  <include file="$(find rosbot_mission_control)/launch/mission_controller.launch"/>
+  <include if="$(arg enable_dashboard)" file="$(find rosbot_dashboard)/launch/dashboard.launch"/>
+</launch>

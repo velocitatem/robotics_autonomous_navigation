@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>rosbot_mission_control</name>
+  <version>0.1.0</version>
+  <description>Mission state machine for ROSbot competition task orchestration.</description>
+
+  <maintainer email="dev@example.com">ROSbot Dev</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <build_depend>actionlib</build_depend>
+  <build_depend>geometry_msgs</build_depend>
+  <build_depend>move_base_msgs</build_depend>
+  <build_depend>rosbot_competition_msgs</build_depend>
+  <build_depend>rospy</build_depend>
+  <build_depend>std_msgs</build_depend>
+  <build_depend>std_srvs</build_depend>
+  <build_depend>tf2_ros</build_depend>
+  <build_depend>smach</build_depend>
+  <build_depend>smach_ros</build_depend>
+
+  <exec_depend>actionlib</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>move_base_msgs</exec_depend>
+  <exec_depend>rosbot_competition_msgs</exec_depend>
+  <exec_depend>rospy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>smach</exec_depend>
+  <exec_depend>smach_ros</exec_depend>
+
+  <export/>
+</package>

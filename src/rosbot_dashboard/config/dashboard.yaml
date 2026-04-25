@@ -1,0 +1,13 @@
+map_frame: map
+base_frame: base_link
+
+video_topic: /perception/annotated_image
+map_topic: /map
+events_topic: /mission_events
+detections_topic: /perception/spatial_detections
+
+video_width: 640
+video_height: 360
+map_width: 640
+map_height: 360
+refresh_hz: 10

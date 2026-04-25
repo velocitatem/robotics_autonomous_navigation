@@ -1,0 +1,27 @@
+loop_hz: 2.0
+
+map_frame: map
+base_frame: base_link
+
+target_order: [red, green, blue]
+approach_distance_m: 0.30
+dropoff_distance_m: 0.35
+
+navigation_timeout_sec: 45.0
+pickup_retry_limit: 2
+
+servo_forward_speed: 0.08
+servo_forward_time_sec: 1.2
+
+backup_speed: 0.08
+backup_distance_m: 0.10
+
+explore_waypoints:
+  - {x: 0.8, y: 0.0, yaw: 0.0}
+  - {x: 0.8, y: 0.8, yaw: 1.57}
+  - {x: 0.0, y: 0.8, yaw: 3.14}
+  - {x: -0.8, y: 0.8, yaw: 3.14}
+  - {x: -0.8, y: 0.0, yaw: -1.57}
+  - {x: -0.8, y: -0.8, yaw: -1.57}
+  - {x: 0.0, y: -0.8, yaw: 0.0}
+  - {x: 0.8, y: -0.8, yaw: 0.0}

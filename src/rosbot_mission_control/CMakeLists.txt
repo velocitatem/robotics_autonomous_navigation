@@ -1,37 +1,35 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(rosbot_perception)
+project(rosbot_mission_control)
 
 find_package(catkin REQUIRED COMPONENTS
-  cv_bridge
+  actionlib
   geometry_msgs
-  image_transport
-  image_geometry
-  message_filters
+  move_base_msgs
   rosbot_competition_msgs
   rospy
-  sensor_msgs
   std_msgs
-  tf2_geometry_msgs
+  std_srvs
   tf2_ros
+  smach
+  smach_ros
 )
 
 catkin_package(
   CATKIN_DEPENDS
-    cv_bridge
+    actionlib
     geometry_msgs
-    image_transport
-    image_geometry
-    message_filters
+    move_base_msgs
     rosbot_competition_msgs
     rospy
-    sensor_msgs
     std_msgs
-    tf2_geometry_msgs
+    std_srvs
     tf2_ros
+    smach
+    smach_ros
 )
 
 catkin_install_python(
   PROGRAMS
-    scripts/perception_node.py
+    scripts/mission_controller.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
