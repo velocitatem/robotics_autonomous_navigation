@@ -1,66 +1,133 @@
-# Husarion ROSbot Competition Workspace
+# ROSbot Competition Workspace
 
-This repository is initialized as a Catkin workspace for a modular ROSbot competition stack.
+Modular ROS Noetic stack for autonomous puck pickup and color-matched delivery, with navigation, perception, manipulation, mission orchestration, and live monitoring.
 
-ROS tools are expected to run inside Docker in this repo (no host ROS installation required).
+## What it does
 
-## Architecture
+This repository is a Catkin workspace that runs a complete competition pipeline:
 
-The system is split into independent ROS packages and nodes:
+1. Detect colored pucks and ArUco drop zones from RGB-D input.
+2. Plan and drive to targets.
+3. Pick up and release pucks through gripper services.
+4. Coordinate behavior with a mission state machine.
+5. Stream mission telemetry and annotated vision output to a dashboard.
 
-- `rosbot_navigation`: SLAM, `move_base`, `twist_mux`, and IR safety-stop helper.
-- `rosbot_perception`: RGB-D puck + ArUco perception and map-frame projection with `tf2`.
-- `rosbot_manipulation`: Gripper services with load-based grasp validation.
-- `rosbot_mission_control`: Event-driven mission state machine.
-- `rosbot_dashboard`: PyQt dashboard (annotated camera, map, and event log).
-- `rosbot_competition_msgs`: Shared message/service contracts.
-- `rosbot_competition_bringup`: Top-level launch orchestration.
+ROS is intended to run in Docker for reproducible setup on any machine.
 
-## Docker Workflow (Recommended)
+## Modules
 
-From the repository root:
+All core modules live under `src/` as ROS packages:
+
+| Package | Main entrypoints | Responsibility |
+| --- | --- | --- |
+| `rosbot_competition_bringup` | `launch/competition_system.launch` | Starts and wires the full system; exposes launch toggles (`enable_slam`, `enable_move_base`, `enable_ir_safety`, `enable_dashboard`). |
+| `rosbot_navigation` | `launch/navigation.launch`, `scripts/ir_safety_stop.py` | Runs mapping (`slam_toolbox` or `gmapping`), `move_base`, and `twist_mux`; publishes safe robot velocity commands. |
+| `rosbot_perception` | `scripts/perception_node.py`, `launch/perception.launch`, `scripts/hsv_calibration.py` | Detects colored pucks + ArUco markers, projects detections to `map`, and publishes annotated camera frames. |
+| `rosbot_manipulation` | `scripts/manipulation_node.py`, `launch/manipulation.launch` | Controls gripper open/close and validates grasp success from servo load feedback. |
+| `rosbot_mission_control` | `scripts/mission_controller.py`, `launch/mission_controller.launch` | SMACH mission loop (`EXPLORE -> APPROACH -> VISUAL_SERVO -> GRAB -> DELIVER`) that coordinates navigation, perception memory, and gripper services. |
+| `rosbot_dashboard` | `scripts/dashboard_node.py`, `launch/dashboard.launch` | PyQt operator UI for annotated camera stream and mission event log (and RViz map when bindings are available). |
+| `rosbot_competition_msgs` | `msg/SpatialDetection.msg`, `msg/MissionEvent.msg`, `srv/GraspPuck.srv` | Shared message/service contracts used by perception, mission control, manipulation, and dashboard. |
+
+## Flow of information and commands
+
+```mermaid
+flowchart LR
+    CAM[RGB-D Camera] --> PER[rosbot_perception]
+    IR[Front IR Range] --> SAFE[ir_safety_stop]
+    LOAD[Servo Load] --> MAN[rosbot_manipulation]
+
+    PER -- SpatialDetection --> MIS[rosbot_mission_control]
+    PER -- Annotated Image --> DASH[rosbot_dashboard]
+    PER -- MissionEvent --> DASH
+
+    MIS -- move_base goals --> NAV[rosbot_navigation]
+    MIS -- /cmd_vel_servo --> MUX[twist_mux]
+    NAV -- /cmd_vel_nav --> MUX
+    SAFE -- /cmd_vel_safety --> MUX
+    MUX -- /cmd_vel --> BASE[Robot Base]
+
+    MIS -- /grasp_puck, /release_puck --> MAN
+    MAN -- /gripper/command --> GRIPPER[Gripper Servo]
+    MAN -- MissionEvent --> DASH
+    MIS -- MissionEvent --> DASH
+
+    MSGS[rosbot_competition_msgs] -. shared types .-> PER
+    MSGS -. shared types .-> MIS
+    MSGS -. shared types .-> MAN
+    MSGS -. shared types .-> DASH
+
+    BRINGUP[competition_system.launch] -. starts .-> NAV
+    BRINGUP -. starts .-> PER
+    BRINGUP -. starts .-> MAN
+    BRINGUP -. starts .-> MIS
+    BRINGUP -. optional .-> DASH
+```
+
+## Quick start (Docker)
+
+From repository root:
 
 ```bash
 docker compose build rosbot-dev
 ./scripts/docker_catkin_make.sh
 ```
 
-Open an interactive shell with ROS sourced:
-
-```bash
-./scripts/docker_shell.sh
-```
-
-If you need GUI support for the dashboard from containerized apps:
+If you want GUI dashboard support from the container:
 
 ```bash
 xhost +local:docker
 ```
 
-To install package dependencies manually in the container:
+Launch the full system:
 
 ```bash
-docker compose run --rm rosbot-dev bash -lc "rosdep install --from-paths src --ignore-src -r -y"
+docker compose run --rm rosbot-dev bash -lc "source devel/setup.bash && roslaunch rosbot_competition_bringup competition_system.launch"
 ```
 
-## Launch
+Open an interactive shell inside the ROS container:
 
 ```bash
-docker compose run --rm rosbot-dev bash -lc "catkin_make && source devel/setup.bash && roslaunch rosbot_competition_bringup competition_system.launch"
+./scripts/docker_shell.sh
 ```
 
-## Main Topics and Services
+## Key interfaces
 
-- `/perception/spatial_detections` (`rosbot_competition_msgs/SpatialDetection`)
-- `/perception/annotated_image` (`sensor_msgs/Image`)
-- `/mission_events` (`std_msgs/String`)
-- `/grasp_puck` (`rosbot_competition_msgs/GraspPuck`)
-- `/release_puck` (`std_srvs/Trigger`)
-- `/cmd_vel_nav`, `/cmd_vel_servo`, `/cmd_vel_safety` multiplexed to `/cmd_vel`
+| Interface | Type | Produced by | Consumed by | Purpose |
+| --- | --- | --- | --- | --- |
+| `/perception/spatial_detections` | `rosbot_competition_msgs/SpatialDetection` | Perception | Mission control | Map-frame puck/drop-zone detections. |
+| `/perception/annotated_image` | `sensor_msgs/Image` | Perception | Dashboard | Live visual debugging stream. |
+| `/mission_events` | `rosbot_competition_msgs/MissionEvent` | Perception, Mission control, Manipulation | Dashboard | Human-readable mission telemetry. |
+| `/grasp_puck` | `rosbot_competition_msgs/GraspPuck` (service) | Manipulation | Mission control | Request adaptive grasp for target color. |
+| `/release_puck` | `std_srvs/Trigger` (service) | Manipulation | Mission control | Open gripper to release puck. |
+| `/cmd_vel` | `geometry_msgs/Twist` | `twist_mux` | Robot base | Final robot velocity command. |
+
+## Configuration files
+
+Important runtime defaults are stored in package-local YAML files:
+
+- `src/rosbot_perception/config/perception.yaml` - camera topics, HSV ranges, ArUco mapping, depth filters.
+- `src/rosbot_manipulation/config/manipulation.yaml` - gripper angles, load thresholds, release timing.
+- `src/rosbot_mission_control/config/mission.yaml` - waypoint loop and mission behavior defaults.
+- `src/rosbot_dashboard/config/dashboard.yaml` - dashboard topics and viewport sizing.
+- `src/rosbot_navigation/config/*.yaml` - SLAM/move_base/twist_mux and navigation tuning.
+
+## Repository layout
+
+```text
+.
+|- docker/
+|- scripts/
+`- src/
+   |- rosbot_competition_bringup/
+   |- rosbot_competition_msgs/
+   |- rosbot_dashboard/
+   |- rosbot_manipulation/
+   |- rosbot_mission_control/
+   |- rosbot_navigation/
+   `- rosbot_perception/
+```
 
 ## Notes
 
-- Parameters are externalized in YAML files under each package's `config/` directory.
-- `move_base` output is remapped through `twist_mux` so global navigation and visual servoing do not conflict.
-- The current code provides a production-ready scaffold with conservative defaults and explicit extension points.
-- `docker-compose.yml` uses `network_mode: host` so ROS graph discovery works with physical robot networking.
+- `docker-compose.yml` uses `network_mode: host` so ROS graph discovery works with robot and local network peers.
+- Package manifests declare MIT license metadata.
