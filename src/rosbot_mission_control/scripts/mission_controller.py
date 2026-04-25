@@ -13,8 +13,7 @@ from nav_msgs.msg import OccupancyGrid
 from rosbot_competition_msgs.msg import SpatialDetection, MissionEvent
 from rosbot_competition_msgs.srv import GraspPuck
 from std_srvs.srv import Trigger
-from sensor_msgs.msg import Image, LaserScan
-from cv_bridge import CvBridge
+from sensor_msgs.msg import LaserScan
 
 
 # Shared memory for the state machine
@@ -32,6 +31,10 @@ class MissionData:
         self.initial_robot_pose = None
         self.inspected_tag_corners = set()
         self.scan_points = []
+        # Color of the puck currently in the gripper, or None when empty.
+        # Used so LOCATE_PUCK / APPROACH cannot re-target the puck the robot
+        # is carrying (whose perception fix appears at the robot's own pose).
+        self.carrying_color = None
         # Yaw of the laser frame expressed in base_link (radians).
         # On the rosbot the lidar is mounted with rpy=(0,0,3.14), i.e. the
         # laser's +X axis points toward the robot's REAR. We must know this
@@ -601,7 +604,30 @@ def navigate_to_goal(
         if state == 3:
             return True, move_base_ready
         if state in [4, 5, 9]:
-            return False, move_base_ready
+            # 4=ABORTED, 5=REJECTED, 9=LOST. Surface this so the operator
+            # doesn't have to guess why DELIVER kept silently bouncing back
+            # to LOCATE_PUCK.
+            state_names = {4: "ABORTED", 5: "REJECTED", 9: "LOST"}
+            publish_event(
+                event_pub,
+                f"[MISSION] move_base {state_names.get(state, state)} navigation to "
+                f"{label} at ({goal['x']:.2f}, {goal['y']:.2f}); falling back to servo.",
+            )
+            arrived = servo_to_map_point(
+                tf_buffer,
+                cmd_pub,
+                event_pub,
+                goal["x"],
+                goal["y"],
+                tolerance_m,
+                max(timeout_sec * 0.5, 8.0),
+                linear_speed,
+                angular_gain,
+                max_angular,
+                label,
+                safety,
+            )
+            return arrived, move_base_ready
         if (rospy.Time.now() - start).to_sec() >= timeout_sec:
             move_base.cancel_goal()
             publish_event(event_pub, f"[MISSION] Navigation to {label} timed out.")
@@ -1046,94 +1072,170 @@ class Approach(smach.State):
 
 
 class VisualServo(smach.State):
-    def __init__(self, event_pub):
+    """Final close-range alignment + creep-up before calling the gripper.
+
+    The previous implementation aborted whenever a 40x40 depth patch had
+    variance below 50 (in metres squared!) which is practically always
+    true for a small cylindrical puck against a flat floor / wall, so the
+    state could never make progress. This version is a closed-loop
+    controller driven by the perception-published map-frame puck pose:
+        1. Look up the latest puck position from puck_memory and the
+           robot pose from TF.
+        2. Rotate to face the puck if the heading error is large.
+        3. Otherwise creep forward through the SafetyMonitor until the
+           planar distance to the puck drops below the grasp threshold.
+        4. Bail out cleanly on timeout or when the puck disappears.
+    The depth image is no longer used as a wall detector; the safety
+    monitor's lidar-based front clearance is the authoritative obstacle
+    check.
+    """
+
+    def __init__(self, tf_buffer, event_pub):
         smach.State.__init__(
             self, outcomes=["ready_to_grab", "wall_detected", "timeout"]
         )
         self.cmd_pub = rospy.Publisher("/cmd_vel_servo", Twist, queue_size=1)
         self.event_pub = event_pub
         self.safety = SafetyMonitor()
-        self.bridge = CvBridge()
-        self.depth_sub = None
-        self.latest_depth = None
-        self.depth_topic = rospy.get_param(
-            "~depth_topic", "/camera/depth/image_raw"
-        )
-
-    def _depth_cb(self, msg):
-        try:
-            self.latest_depth = self.bridge.imgmsg_to_cv2(
-                msg, desired_encoding="passthrough"
-            )
-        except Exception:
-            pass
+        self.tf_buffer = tf_buffer
 
     def execute(self, userdata):
         publish_event(self.event_pub, "[MISSION] State: VISUAL_SERVO")
-        self.latest_depth = None
-        self.depth_sub = rospy.Subscriber(
-            self.depth_topic, Image, self._depth_cb
+
+        color = mission_data.current_target_color
+        if not color:
+            return "wall_detected"
+
+        max_duration = rospy.Duration(
+            float(rospy.get_param("~visual_servo_timeout_sec", 12.0))
         )
+        grasp_distance = float(rospy.get_param("~visual_servo_grasp_distance_m", 0.18))
+        align_tolerance = float(rospy.get_param("~visual_servo_align_tolerance_rad", 0.12))
+        align_gain = float(rospy.get_param("~visual_servo_align_gain", 1.4))
+        max_angular = float(rospy.get_param("~visual_servo_max_angular", 0.7))
+        forward_speed = float(rospy.get_param("~visual_servo_speed", 0.05))
+        blocked_grace_sec = float(rospy.get_param("~visual_servo_blocked_grace_sec", 1.5))
 
-        rospy.sleep(0.5)  # Wait for depth
+        # Snapshot the puck pose once at entry. The depth camera is mounted
+        # high on the rosbot and tilts forward; a small ground puck typically
+        # falls below the vertical FOV before grasp distance, so perception
+        # can't refresh the memory in this final approach. We trust the pose
+        # that Approach already navigated to and keep refreshing only when a
+        # newer detection comes in.
+        entry = mission_data.puck_memory.get(color)
+        if entry is None:
+            publish_event(
+                self.event_pub,
+                f"[MISSION] Visual servo has no {color} puck pose; aborting.",
+            )
+            return "timeout"
+        target_point = _memory_point(entry)
+        if target_point is None:
+            return "timeout"
+        last_used_stamp = _memory_stamp(entry)
 
-        # Check if wall
-        if self.latest_depth is not None:
-            h, w = self.latest_depth.shape[:2]
-            patch = self.latest_depth[
-                h // 2 - 20 : h // 2 + 20, w // 2 - 20 : w // 2 + 20
-            ]
-            # If the variance in depth is extremely low, it might be a flat wall
-            if np.var(patch) < 50:  # Very flat
-                publish_event(
-                    self.event_pub,
-                    "[MISSION] Warning: Wall detected! Aborting visual servo.",
-                )
-                self.depth_sub.unregister()
-                return "wall_detected"
-
-        publish_event(self.event_pub, "[MISSION] Servoing towards puck...")
-        cmd = Twist()
-        cmd.linear.x = float(rospy.get_param("~visual_servo_speed", 0.04))
-
-        # Open loop servoing for now (ideally PID based on camera)
-        # We stop when depth says center pixel is ~0.06m away
         rate = rospy.Rate(10)
-        start_time = rospy.Time.now()
+        start = rospy.Time.now()
+        last_progress_time = start
+        last_distance = None
+        blocked_since = None
 
         while not rospy.is_shutdown():
-            if rospy.Time.now() - start_time > rospy.Duration(5.0):
-                self.cmd_pub.publish(Twist())
-                self.depth_sub.unregister()
-                return "timeout"
-
-            if self.latest_depth is not None:
-                h, w = self.latest_depth.shape[:2]
-                center_depth = self.latest_depth[h // 2, w // 2]
-                if 0 < center_depth < 60:  # 60mm
-                    publish_event(
-                        self.event_pub, "[MISSION] Perfect grasp distance reached."
-                    )
-                    break
-
-            if not publish_safe_twist(
-                self.cmd_pub, cmd, self.safety, self.event_pub, "visual servo"
-            ):
+            if rospy.Time.now() - start > max_duration:
                 self.cmd_pub.publish(Twist())
                 publish_event(
                     self.event_pub,
-                    "[MISSION] Visual servo blocked by safety gate.",
+                    f"[MISSION] Visual servo timed out before grasp ({color}).",
                 )
-                self.depth_sub.unregister()
-                return "wall_detected"
+                return "timeout"
+
+            # Opportunistically refresh the target if perception republished a
+            # newer pose (e.g. while still aligning at standoff range).
+            entry = mission_data.puck_memory.get(color)
+            if entry is not None:
+                stamp = _memory_stamp(entry)
+                if (
+                    stamp is not None
+                    and last_used_stamp is not None
+                    and stamp > last_used_stamp
+                ):
+                    new_point = _memory_point(entry)
+                    if new_point is not None:
+                        target_point = new_point
+                        last_used_stamp = stamp
+
+            puck_point = target_point
+
+            robot, yaw = get_robot_pose_yaw(self.tf_buffer)
+            if robot is None or yaw is None:
+                try:
+                    rate.sleep()
+                except rospy.ROSInterruptException:
+                    break
+                continue
+
+            dx = puck_point.x - robot.x
+            dy = puck_point.y - robot.y
+            distance = math.hypot(dx, dy)
+
+            if distance <= grasp_distance:
+                self.cmd_pub.publish(Twist())
+                publish_event(
+                    self.event_pub,
+                    f"[MISSION] Visual servo at grasp distance ({distance:.2f} m).",
+                )
+                return "ready_to_grab"
+
+            if last_distance is None or distance < last_distance - 0.01:
+                last_distance = distance
+                last_progress_time = rospy.Time.now()
+            elif (rospy.Time.now() - last_progress_time).to_sec() > 5.0:
+                self.cmd_pub.publish(Twist())
+                publish_event(
+                    self.event_pub,
+                    f"[MISSION] Visual servo not converging on {color} puck.",
+                )
+                return "timeout"
+
+            heading_error = _angle_wrap(math.atan2(dy, dx) - yaw)
+
+            cmd = Twist()
+            if abs(heading_error) > align_tolerance:
+                cmd.angular.z = _clamp(
+                    align_gain * heading_error, -max_angular, max_angular
+                )
+            else:
+                cmd.linear.x = forward_speed
+                cmd.angular.z = _clamp(
+                    0.6 * heading_error, -max_angular, max_angular
+                )
+
+            moved = publish_safe_twist(
+                self.cmd_pub, cmd, self.safety, self.event_pub, "visual servo"
+            )
+            if not moved and cmd.linear.x > 0.0 and abs(cmd.angular.z) < 1e-3:
+                # Forward motion gated by lidar (likely a real obstacle in
+                # front). Allow a short grace period so a transient laser
+                # spike doesn't kill the approach.
+                if blocked_since is None:
+                    blocked_since = rospy.Time.now()
+                elif (rospy.Time.now() - blocked_since).to_sec() > blocked_grace_sec:
+                    self.cmd_pub.publish(Twist())
+                    publish_event(
+                        self.event_pub,
+                        "[MISSION] Visual servo blocked by lidar safety gate.",
+                    )
+                    return "wall_detected"
+            else:
+                blocked_since = None
+
             try:
                 rate.sleep()
             except rospy.ROSInterruptException:
                 break
 
         self.cmd_pub.publish(Twist())
-        self.depth_sub.unregister()
-        return "ready_to_grab"
+        return "timeout"
 
 
 class Grab(smach.State):
@@ -1145,13 +1247,20 @@ class Grab(smach.State):
 
     def execute(self, userdata):
         publish_event(self.event_pub, "[MISSION] State: GRAB")
+        color = mission_data.current_target_color
         try:
-            resp = self.grasp_srv(mission_data.current_target_color)
+            resp = self.grasp_srv(color)
             if resp.success:
                 publish_event(
                     self.event_pub,
-                    f"[MISSION] Grabbed {mission_data.current_target_color} puck successfully!",
+                    f"[MISSION] Grabbed {color} puck successfully!",
                 )
+                # Mark this colour as carried so perception won't overwrite
+                # the original puck pose with the (now meaningless) detection
+                # of the held puck floating above the robot. Drop the stale
+                # ground pose too so any fallback path doesn't re-use it.
+                mission_data.carrying_color = color
+                mission_data.puck_memory.pop(color, None)
                 return "grabbed"
             else:
                 publish_event(
@@ -1187,8 +1296,12 @@ class Deliver(smach.State):
         self.event_pub = event_pub
         self.cmd_pub = rospy.Publisher("/cmd_vel_servo", Twist, queue_size=1)
         self.safety = SafetyMonitor()
-        self.dropoff_distance_m = float(rospy.get_param("~dropoff_distance_m", 0.35))
-        self.goal_tolerance_m = float(rospy.get_param("~deliver_goal_tolerance_m", 0.20))
+        # The 0.25 m drop-zone marker sits at lidar height, so the standoff has
+        # to clear robot_radius (~0.11) + inflation (~0.18) + the marker half
+        # width (~0.13) = ~0.42 m before move_base will plan a path. Default a
+        # bit further out and let retries push us closer if needed.
+        self.dropoff_distance_m = float(rospy.get_param("~dropoff_distance_m", 0.55))
+        self.goal_tolerance_m = float(rospy.get_param("~deliver_goal_tolerance_m", 0.25))
         self.servo_goal_linear_speed = float(
             rospy.get_param("~servo_goal_linear_speed", 0.08)
         )
@@ -1214,39 +1327,100 @@ class Deliver(smach.State):
             return "failed"
 
         corner_idx = arena.color_to_corner[color]
-        goal_dict = arena.vantage(corner_idx, self.dropoff_distance_m)
+        max_retries = int(rospy.get_param("~deliver_retry_limit", 3))
+        retry_insets = [
+            self.dropoff_distance_m,
+            self.dropoff_distance_m + 0.10,
+            self.dropoff_distance_m + 0.20,
+        ]
+        per_attempt_timeout = float(rospy.get_param("~deliver_attempt_timeout_sec", 35.0))
 
+        for attempt in range(max_retries):
+            inset = retry_insets[min(attempt, len(retry_insets) - 1)]
+            goal_dict = arena.vantage(corner_idx, inset)
+            # First attempt asks move_base for a planned path. Subsequent
+            # attempts skip straight to the reactive servo because experience
+            # shows move_base burns ~90 s in rotate-recovery near the
+            # drop-zone markers before aborting, which makes the robot look
+            # frozen. Servo navigation has lidar-based obstacle avoidance and
+            # is what reliably gets us in for the release.
+            use_move_base = attempt == 0
+            publish_event(
+                self.event_pub,
+                f"[MISSION] Delivering {color} puck to ArUco zone "
+                f"(attempt {attempt + 1}/{max_retries}, inset {inset:.2f} m, "
+                f"goal=({goal_dict['x']:.2f}, {goal_dict['y']:.2f}), "
+                f"mode={'move_base' if use_move_base else 'servo'})...",
+            )
+            if use_move_base:
+                arrived, self.move_base_ready = navigate_to_goal(
+                    self.move_base,
+                    self.move_base_ready,
+                    self.tf_buffer,
+                    self.cmd_pub,
+                    self.event_pub,
+                    goal_dict,
+                    per_attempt_timeout,
+                    self.goal_tolerance_m,
+                    self.servo_goal_linear_speed,
+                    self.servo_goal_angular_gain,
+                    self.servo_goal_max_angular,
+                    f"{color} drop zone",
+                    self.safety,
+                )
+            else:
+                arrived = servo_to_map_point(
+                    self.tf_buffer,
+                    self.cmd_pub,
+                    self.event_pub,
+                    goal_dict["x"],
+                    goal_dict["y"],
+                    self.goal_tolerance_m,
+                    per_attempt_timeout,
+                    self.servo_goal_linear_speed,
+                    self.servo_goal_angular_gain,
+                    self.servo_goal_max_angular,
+                    f"{color} drop zone",
+                    self.safety,
+                )
+            if arrived:
+                publish_event(
+                    self.event_pub,
+                    f"[MISSION] Arrived at {color} drop zone. Releasing.",
+                )
+                self.release_srv()
+                mission_data.completed_colors.add(color)
+                mission_data.target_index += 1
+                mission_data.puck_memory.pop(color, None)
+                mission_data.carrying_color = None
+                mission_data.current_target_color = None
+                self._backup_after_release()
+                return "delivered"
+            publish_event(
+                self.event_pub,
+                f"[MISSION] Delivery attempt {attempt + 1} for {color} failed; "
+                "retrying with relaxed standoff.",
+            )
+
+        # Exhausted all retries. Release the puck in place and ADVANCE to the
+        # next colour so we don't keep re-targeting this one forever.
         publish_event(
-            self.event_pub, f"[MISSION] Delivering {color} puck to ArUco zone..."
-        )
-        arrived, self.move_base_ready = navigate_to_goal(
-            self.move_base,
-            self.move_base_ready,
-            self.tf_buffer,
-            self.cmd_pub,
             self.event_pub,
-            goal_dict,
-            45.0,
-            self.goal_tolerance_m,
-            self.servo_goal_linear_speed,
-            self.servo_goal_angular_gain,
-            self.servo_goal_max_angular,
-            f"{color} drop zone",
-            self.safety,
+            f"[MISSION] All delivery attempts to {color} drop zone failed; "
+            "releasing puck where the robot stands and skipping this colour.",
         )
-        if arrived:
-            publish_event(self.event_pub, "[MISSION] Arrived at drop zone. Releasing.")
+        try:
             self.release_srv()
-            mission_data.completed_colors.add(color)
-            mission_data.target_index += 1
-            if color in mission_data.puck_memory:
-                del mission_data.puck_memory[color]
-            mission_data.current_target_color = None
-
-            # Back up after releasing
-            self._backup_after_release()
-
-            return "delivered"
+        except Exception as exc:
+            rospy.logwarn("[MISSION] Release service failed: %s", str(exc))
+        mission_data.carrying_color = None
+        mission_data.puck_memory.pop(color, None)
+        # Skip this colour permanently: mark completed AND bump the index so
+        # _next_target_color moves on.
+        mission_data.completed_colors.add(color)
+        mission_data.target_index += 1
+        mission_data.current_target_color = None
+        self._backup_after_release()
         return "failed"
 
     def _backup_after_release(self):
@@ -1267,6 +1441,12 @@ def _on_detection(msg):
     stamp = msg.header.stamp if msg.header.stamp.to_sec() > 0.0 else rospy.Time.now()
     entry = {"point": point, "stamp": stamp}
     if msg.object_class == "puck" and msg.color:
+        # While the robot is carrying a puck of this colour, the camera sees
+        # the held puck right above the base_link and reports its map-frame
+        # position ~= robot pose. Ignoring those updates keeps the original
+        # ground-truth pickup pose from being clobbered with garbage.
+        if mission_data.carrying_color == msg.color:
+            return
         mission_data.puck_memory[msg.color] = entry
     elif msg.object_class == "drop_zone" and msg.color:
         mission_data.drop_zone_memory[msg.color] = entry
@@ -1412,7 +1592,7 @@ def main():
         )
         smach.StateMachine.add(
             "VISUAL_SERVO",
-            VisualServo(event_pub),
+            VisualServo(tf_buffer, event_pub),
             transitions={
                 "ready_to_grab": "GRAB",
                 "wall_detected": "LOCATE_PUCK",

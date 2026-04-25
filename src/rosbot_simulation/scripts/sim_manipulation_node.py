@@ -65,10 +65,13 @@ class SimManipulationNode:
     def _on_release(self, _req):
         if not self.attached_model:
             return TriggerResponse(success=True, message="nothing attached")
-        ok = self._detach_model(self.attached_model)
+        # Clear the carried model first so the 20 Hz follow timer stops
+        # republishing the puck onto the robot while we set its rest pose.
+        name = self.attached_model
+        self.attached_model = None
+        ok = self._detach_model(name)
         if ok:
-            self._event(f"[SIM] Detached {self.attached_model}")
-            self.attached_model = None
+            self._event(f"[SIM] Detached {name}")
             return TriggerResponse(success=True, message="detached")
         return TriggerResponse(success=False, message="detach failed")
 
@@ -110,11 +113,37 @@ class SimManipulationNode:
             return False
 
     def _detach_model(self, model_name):
+        # Default ModelState() has zero pose, so calling SetModelState with it
+        # teleports the released puck to the world origin, where the camera
+        # then re-detects it and the mission gets confused. Read the puck's
+        # current pose and write it back so the puck stays where the robot
+        # let it go (and it will just drop to the floor under gravity).
         try:
-            # Keep current detached pose; gravity will handle motion afterwards.
+            puck_pose = None
+            if self.model_states is not None:
+                names = self.model_states.name
+                if model_name in names:
+                    idx = names.index(model_name)
+                    puck_pose = self.model_states.pose[idx]
+
             state = ModelState()
             state.model_name = model_name
             state.reference_frame = "world"
+            if puck_pose is not None:
+                state.pose.position.x = puck_pose.position.x
+                state.pose.position.y = puck_pose.position.y
+                # Drop just above the floor so gravity settles the puck.
+                state.pose.position.z = max(0.025, puck_pose.position.z - self.attach_offset_z)
+                state.pose.orientation = puck_pose.orientation
+            elif self.model_states is not None and self.robot_model_name in self.model_states.name:
+                # Fallback: place the puck at the robot's current position on
+                # the floor instead of at world origin.
+                robot_idx = self.model_states.name.index(self.robot_model_name)
+                robot_pose = self.model_states.pose[robot_idx]
+                state.pose.position.x = robot_pose.position.x
+                state.pose.position.y = robot_pose.position.y
+                state.pose.position.z = 0.025
+                state.pose.orientation = robot_pose.orientation
             self.set_state_srv(state)
             return True
         except rospy.ServiceException as err:

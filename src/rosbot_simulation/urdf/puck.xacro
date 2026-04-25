@@ -7,6 +7,11 @@
   <xacro:arg name="r" default="1.0"/>
   <xacro:arg name="g" default="0.0"/>
   <xacro:arg name="b" default="0.0"/>
+  <!-- Gazebo material script name. Must be one of the predefined Gazebo
+       materials (e.g. Gazebo/Red, Gazebo/Green, Gazebo/Blue). The previous
+       version hardcoded Gazebo/Red here, which made every puck render red
+       and broke HSV-based colour classification in perception_node. -->
+  <xacro:arg name="gazebo_material" default="Gazebo/Red"/>
 
   <link name="$(arg name)_link">
     <inertial>
@@ -39,6 +44,6 @@
   </link>
 
   <gazebo reference="$(arg name)_link">
-    <material>Gazebo/Red</material>
+    <material>$(arg gazebo_material)</material>
   </gazebo>
 </robot>

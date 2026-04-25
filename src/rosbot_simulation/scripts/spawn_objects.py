@@ -40,17 +40,35 @@ class ObjectSpawner:
 
     def _spawn_pucks(self, pucks):
         color_map = {
-            "red": {"r": "1.0", "g": "0.1", "b": "0.1"},
-            "green": {"r": "0.1", "g": "0.9", "b": "0.1"},
-            "blue": {"r": "0.2", "g": "0.2", "b": "1.0"},
+            "red": {
+                "r": "1.0", "g": "0.1", "b": "0.1",
+                "gazebo_material": "Gazebo/Red",
+            },
+            "green": {
+                "r": "0.1", "g": "0.9", "b": "0.1",
+                "gazebo_material": "Gazebo/Green",
+            },
+            "blue": {
+                "r": "0.2", "g": "0.2", "b": "1.0",
+                "gazebo_material": "Gazebo/Blue",
+            },
         }
         for puck in pucks:
             name = puck["name"]
             color = puck.get("color", "red")
             rgb = color_map.get(color, color_map["red"])
+            # gazebo_material drives the visible Gazebo colour. Without this the
+            # xacro falls back to its default (Gazebo/Red) and HSV detection
+            # cannot distinguish the three pucks.
             xml = _render_xacro(
                 self.puck_xacro,
-                mappings={"name": name, "r": rgb["r"], "g": rgb["g"], "b": rgb["b"]},
+                mappings={
+                    "name": name,
+                    "r": rgb["r"],
+                    "g": rgb["g"],
+                    "b": rgb["b"],
+                    "gazebo_material": rgb["gazebo_material"],
+                },
             )
             self._spawn_model(
                 name=name,

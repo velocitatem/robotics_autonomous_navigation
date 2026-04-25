@@ -194,17 +194,12 @@ class PerceptionNode:
         detections = []
         image_area = float(overlay.shape[0] * overlay.shape[1])
 
-        # Find known colors to skip processing them
-        known_colors = set()
-        for key in self.last_detection.keys():
-            if key.startswith("puck:"):
-                color = key.split(":")[1]
-                known_colors.add(color)
-
+        # Always re-run HSV detection on every frame. The previous version
+        # cached colours that had ever been published and skipped them, which
+        # froze the puck position estimate at the very first (far, noisy)
+        # detection and left the mission state machine driving toward stale
+        # coordinates that no longer matched reality.
         for color_name, ranges in self.hsv_ranges.items():
-            if color_name in known_colors:
-                continue  # Optimization: stop running HSV on known pucks
-
             mask = np.zeros(hsv.shape[:2], dtype=np.uint8)
             for hsv_range in ranges:
                 lower = np.array(hsv_range["lower"], dtype=np.uint8)

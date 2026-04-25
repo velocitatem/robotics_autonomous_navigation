@@ -8,4 +8,8 @@ pucks:
 drop_zones:
   - {name: zone_red, marker_id: 1, color: red, x: -1.2, y: -0.85, z: 0.15, yaw: 0.0}
   - {name: zone_green, marker_id: 2, color: green, x: -1.2, y: 0.85, z: 0.15, yaw: 0.0}
-  - {name: zone_blue, marker_id: 3, color: blue, x: 1.2, y: 0.85, z: 0.15, yaw: 3.14159}
+  # Blue zone is in the NE corner. The other two zones face +X (yaw=0). Rotate
+  # blue 90 deg so its visible face is perpendicular to red/green AND aimed
+  # south (-Y) toward the robot's SE spawn, so the camera sees a non-mirrored
+  # marker on the very first scan rotation.
+  - {name: zone_blue, marker_id: 3, color: blue, x: 1.2, y: 0.85, z: 0.15, yaw: -1.5707963}
