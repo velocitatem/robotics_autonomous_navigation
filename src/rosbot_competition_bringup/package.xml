@@ -14,6 +14,7 @@
   <exec_depend>rosbot_mission_control</exec_depend>
   <exec_depend>rosbot_navigation</exec_depend>
   <exec_depend>rosbot_perception</exec_depend>
+  <exec_depend>rosbot_simulation</exec_depend>
 
   <export/>
 </package>

@@ -1,0 +1,11 @@
+# Convention: the default simulation robot spawn is in the SE (+X, -Y)
+# no-tag corner, facing the arena center. Pucks are kept out of that quadrant.
+pucks:
+  - {name: puck_red, color: red, x: -0.85, y: 0.55, z: 0.02, yaw: 0.0}
+  - {name: puck_green, color: green, x: -0.55, y: -0.55, z: 0.02, yaw: 0.0}
+  - {name: puck_blue, color: blue, x: 0.55, y: 0.65, z: 0.02, yaw: 0.0}
+
+drop_zones:
+  - {name: zone_red, marker_id: 1, color: red, x: -1.2, y: -0.85, z: 0.15, yaw: 0.0}
+  - {name: zone_green, marker_id: 2, color: green, x: -1.2, y: 0.85, z: 0.15, yaw: 0.0}
+  - {name: zone_blue, marker_id: 3, color: blue, x: 1.2, y: 0.85, z: 0.15, yaw: 3.14159}

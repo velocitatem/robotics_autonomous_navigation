@@ -7,6 +7,10 @@ import message_filters
 import numpy as np
 import rospy
 import tf2_ros
+# Importing tf2_geometry_msgs registers PointStamped/PoseStamped converters
+# with tf2_ros.Buffer. Without it, tf_buffer.transform(PointStamped) raises
+# TypeException and every detection callback crashes silently.
+import tf2_geometry_msgs  # noqa: F401  (registration side-effect)
 from cv_bridge import CvBridge, CvBridgeError
 from geometry_msgs.msg import Point, PointStamped
 from rosbot_competition_msgs.msg import SpatialDetection, MissionEvent

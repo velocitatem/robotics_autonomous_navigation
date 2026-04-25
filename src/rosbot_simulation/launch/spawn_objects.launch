@@ -1,0 +1,7 @@
+<launch>
+  <arg name="objects_config" default="$(find rosbot_simulation)/config/objects.yaml"/>
+  <node pkg="rosbot_simulation" type="spawn_objects.py" name="spawn_objects" output="screen">
+    <param name="objects_config" value="$(arg objects_config)"/>
+    <param name="package_path" value="$(find rosbot_simulation)"/>
+  </node>
+</launch>

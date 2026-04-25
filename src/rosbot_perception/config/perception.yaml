@@ -30,6 +30,6 @@ hsv_ranges:
 aruco:
   dictionary: DICT_4X4_50
   marker_color_map:
-    1: red
-    2: green
-    3: blue
+    "1": red
+    "2": green
+    "3": blue

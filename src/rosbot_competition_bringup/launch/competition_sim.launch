@@ -1,0 +1,20 @@
+<launch>
+  <arg name="gui" default="true"/>
+  <arg name="enable_dashboard" default="true"/>
+  <arg name="enable_slam" default="true"/>
+  <arg name="enable_move_base" default="true"/>
+
+  <include file="$(find rosbot_simulation)/launch/competition_world.launch">
+    <arg name="gui" value="$(arg gui)"/>
+    <arg name="enable_sim_ir" value="false"/>
+  </include>
+
+  <include file="$(find rosbot_competition_bringup)/launch/competition_system.launch">
+    <arg name="enable_slam" value="$(arg enable_slam)"/>
+    <arg name="enable_move_base" value="$(arg enable_move_base)"/>
+    <arg name="use_slam_toolbox" value="true"/>
+    <arg name="enable_ir_safety" value="false"/>
+    <arg name="enable_dashboard" value="$(arg enable_dashboard)"/>
+    <arg name="enable_sim_manipulation" value="true"/>
+  </include>
+</launch>

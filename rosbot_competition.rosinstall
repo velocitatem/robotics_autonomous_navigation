@@ -1,0 +1,4 @@
+- git:
+    local-name: src/external/rosbot_ros
+    uri: https://github.com/husarion/rosbot_ros.git
+    version: noetic

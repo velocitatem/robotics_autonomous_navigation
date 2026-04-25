@@ -1,0 +1,47 @@
+<launch>
+  <arg name="world_file" default="$(find rosbot_simulation)/worlds/competition_arena.world"/>
+  <!-- Default spawn is the SE no-tag corner facing center; mission control now supports arbitrary in-arena starts. -->
+  <arg name="x" default="1.15"/>
+  <arg name="y" default="-0.85"/>
+  <arg name="z" default="0.05"/>
+  <arg name="yaw" default="2.52"/>
+  <arg name="gui" default="true"/>
+  <arg name="paused" default="false"/>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="enable_sim_ir" default="false"/>
+
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" value="$(arg world_file)"/>
+    <arg name="paused" value="$(arg paused)"/>
+    <arg name="use_sim_time" value="$(arg use_sim_time)"/>
+    <arg name="gui" value="$(arg gui)"/>
+  </include>
+
+  <param name="robot_description"
+         command="$(find xacro)/xacro $(find rosbot_description)/urdf/rosbot.xacro"/>
+
+  <!-- Publish URDF static transforms (base_link -> body_link -> laser, etc.).
+       Without this, slam_toolbox and move_base cannot transform /scan, the
+       costmap obstacle layer never updates, and "Sensor data is out of date"
+       blocks all motion. -->
+  <node pkg="robot_state_publisher" type="robot_state_publisher"
+        name="robot_state_publisher" output="screen">
+    <param name="publish_frequency" value="30.0"/>
+  </node>
+  <node pkg="joint_state_publisher" type="joint_state_publisher"
+        name="joint_state_publisher" output="screen">
+    <param name="rate" value="30"/>
+    <param name="use_gui" value="false"/>
+  </node>
+
+  <node pkg="gazebo_ros" type="spawn_model" name="spawn_rosbot" output="screen"
+        args="-urdf -param robot_description -model rosbot -x $(arg x) -y $(arg y) -z $(arg z) -Y $(arg yaw)"/>
+
+  <include file="$(find rosbot_simulation)/launch/spawn_objects.launch"/>
+
+  <node if="$(arg enable_sim_ir)"
+        pkg="rosbot_simulation"
+        type="sim_ir_publisher.py"
+        name="sim_ir_publisher"
+        output="screen"/>
+</launch>

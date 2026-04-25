@@ -4,6 +4,7 @@
   <arg name="use_slam_toolbox" default="true"/>
   <arg name="enable_ir_safety" default="true"/>
   <arg name="enable_dashboard" default="true"/>
+  <arg name="enable_sim_manipulation" default="false"/>
 
   <include file="$(find rosbot_navigation)/launch/navigation.launch">
     <arg name="enable_slam" value="$(arg enable_slam)"/>
@@ -13,7 +14,9 @@
   </include>
 
   <include file="$(find rosbot_perception)/launch/perception.launch"/>
-  <include file="$(find rosbot_manipulation)/launch/manipulation.launch"/>
+  <include file="$(find rosbot_manipulation)/launch/manipulation.launch">
+    <arg name="use_sim" value="$(arg enable_sim_manipulation)"/>
+  </include>
   <include file="$(find rosbot_mission_control)/launch/mission_controller.launch"/>
   <include if="$(arg enable_dashboard)" file="$(find rosbot_dashboard)/launch/dashboard.launch"/>
 </launch>

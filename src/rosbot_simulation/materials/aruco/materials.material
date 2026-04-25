@@ -1,0 +1,41 @@
+material Aruco/Marker1
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture marker1.png
+      }
+    }
+  }
+}
+
+material Aruco/Marker2
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture marker2.png
+      }
+    }
+  }
+}
+
+material Aruco/Marker3
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture marker3.png
+      }
+    }
+  }
+}

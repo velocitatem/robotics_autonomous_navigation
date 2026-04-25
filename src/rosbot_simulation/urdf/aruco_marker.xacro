@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<robot name="aruco_marker" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:arg name="name" default="aruco_marker"/>
+  <xacro:arg name="size" default="0.25"/>
+  <xacro:arg name="thickness" default="0.02"/>
+  <!-- Use the materials directory itself as the Gazebo URI so Ogre finds
+       both materials.material AND the marker*.png textures it references. -->
+  <xacro:arg name="material_uri" default="file://$(find rosbot_simulation)/materials/aruco/"/>
+  <xacro:arg name="material_name" default="Aruco/Marker1"/>
+
+  <link name="$(arg name)_link">
+    <inertial>
+      <mass value="0.2"/>
+      <inertia ixx="0.0005" ixy="0" ixz="0" iyy="0.0005" iyz="0" izz="0.0005"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <box size="$(arg thickness) $(arg size) $(arg size)"/>
+      </geometry>
+      <material name="white">
+        <color rgba="1 1 1 1"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="$(arg thickness) $(arg size) $(arg size)"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Gazebo override: apply the requested ArUco material so the panel shows
+       the actual marker pattern (instead of plain white) for the camera to
+       detect. -->
+  <gazebo reference="$(arg name)_link">
+    <visual>
+      <material>
+        <script>
+          <uri>$(arg material_uri)</uri>
+          <name>$(arg material_name)</name>
+        </script>
+      </material>
+    </visual>
+  </gazebo>
+</robot>

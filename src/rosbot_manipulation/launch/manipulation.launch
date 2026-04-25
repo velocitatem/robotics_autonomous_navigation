@@ -1,6 +1,12 @@
 <launch>
   <arg name="config" default="$(find rosbot_manipulation)/config/manipulation.yaml"/>
-  <node pkg="rosbot_manipulation" type="manipulation_node.py" name="manipulation_node" output="screen">
+  <arg name="use_sim" default="false"/>
+
+  <node unless="$(arg use_sim)" pkg="rosbot_manipulation" type="manipulation_node.py" name="manipulation_node" output="screen">
+    <rosparam file="$(arg config)" command="load"/>
+  </node>
+
+  <node if="$(arg use_sim)" pkg="rosbot_simulation" type="sim_manipulation_node.py" name="manipulation_node" output="screen">
     <rosparam file="$(arg config)" command="load"/>
   </node>
 </launch>

@@ -26,6 +26,7 @@ All core modules live under `src/` as ROS packages:
 | `rosbot_manipulation` | `scripts/manipulation_node.py`, `launch/manipulation.launch` | Controls gripper open/close and validates grasp success from servo load feedback. |
 | `rosbot_mission_control` | `scripts/mission_controller.py`, `launch/mission_controller.launch` | SMACH mission loop (`EXPLORE -> APPROACH -> VISUAL_SERVO -> GRAB -> DELIVER`) that coordinates navigation, perception memory, and gripper services. |
 | `rosbot_dashboard` | `scripts/dashboard_node.py`, `launch/dashboard.launch` | PyQt operator UI for annotated camera stream and mission event log (and RViz map when bindings are available). |
+| `rosbot_simulation` | `launch/competition_world.launch`, `scripts/spawn_objects.py`, `scripts/sim_manipulation_node.py` | Gazebo competition arena, object spawner, and simulation grasp adapter using `gazebo_ros_link_attacher`. |
 | `rosbot_competition_msgs` | `msg/SpatialDetection.msg`, `msg/MissionEvent.msg`, `srv/GraspPuck.srv` | Shared message/service contracts used by perception, mission control, manipulation, and dashboard. |
 
 ## Flow of information and commands
@@ -90,6 +91,29 @@ Open an interactive shell inside the ROS container:
 ./scripts/docker_shell.sh
 ```
 
+## Simulation quick start (Gazebo)
+
+1. Import external simulation dependencies:
+   ```bash
+   ./scripts/docker_vcs_import.sh
+   ```
+2. Build and source:
+   ```bash
+   ./scripts/docker_catkin_make.sh
+   ```
+3. Allow container GUI access:
+   ```bash
+   xhost +local:docker
+   ```
+4. Launch full simulation stack:
+   ```bash
+   ./scripts/docker_sim.sh
+   ```
+
+Simulation launch entrypoints:
+- `rosbot_competition_bringup/launch/competition_sim.launch` starts Gazebo + full mission stack.
+- `rosbot_simulation/launch/competition_world.launch` starts only world + robot + object spawning.
+
 ## Key interfaces
 
 | Interface | Type | Produced by | Consumed by | Purpose |
@@ -124,10 +148,33 @@ Important runtime defaults are stored in package-local YAML files:
    |- rosbot_manipulation/
    |- rosbot_mission_control/
    |- rosbot_navigation/
-   `- rosbot_perception/
+   |- rosbot_perception/
+   `- rosbot_simulation/
 ```
 
 ## Notes
 
 - `docker-compose.yml` uses `network_mode: host` so ROS graph discovery works with robot and local network peers.
 - Package manifests declare MIT license metadata.
+
+## Smoke test checklist
+
+After `competition_sim.launch` is running:
+
+1. Sensor/data sanity:
+   ```bash
+   rostopic hz /scan
+   rostopic hz /camera/color/image_raw
+   rostopic hz /camera/depth/image_raw
+   ```
+   Expect stable rates above 5 Hz.
+2. TF sanity:
+   ```bash
+   rosrun tf tf_echo map base_link
+   ```
+   Confirm map and base frames update.
+3. Navigation sanity:
+   - In RViz, send a `2D Nav Goal`; robot should move and avoid obstacles.
+4. Mission sanity:
+   - Observe `/mission_events` and confirm at least one full cycle:
+     `EXPLORE -> APPROACH -> VISUAL_SERVO -> GRAB -> DELIVER`.

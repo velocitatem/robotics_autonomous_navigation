@@ -1,13 +1,15 @@
 topics:
   - name: ir_safety
-    topic: ir_cmd_vel
+    topic: cmd_vel_safety
     timeout: 0.5
     priority: 100
   - name: visual_servo
-    topic: servo_cmd_vel
+    topic: cmd_vel_servo
     timeout: 0.5
     priority: 50
   - name: navigation
-    topic: move_base/cmd_vel
+    topic: cmd_vel_nav
     timeout: 0.5
     priority: 10
+
+locks: []

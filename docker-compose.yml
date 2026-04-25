@@ -19,3 +19,6 @@ services:
       - ./:/ws
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - ${HOME}/.Xauthority:/tmp/.docker.xauth:rw
+      - /dev/dri:/dev/dri
+    devices:
+      - /dev/dri:/dev/dri

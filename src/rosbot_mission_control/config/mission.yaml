@@ -5,23 +5,62 @@ base_frame: base_link
 
 target_order: [red, green, blue]
 approach_distance_m: 0.30
-dropoff_distance_m: 0.35
+dropoff_distance_m: 0.40
+approach_goal_tolerance_m: 0.18
+deliver_goal_tolerance_m: 0.20
 
 navigation_timeout_sec: 45.0
 pickup_retry_limit: 2
 
-servo_forward_speed: 0.08
+servo_forward_speed: 0.10
 servo_forward_time_sec: 1.2
 
-backup_speed: 0.08
+backup_speed: 0.10
 backup_distance_m: 0.10
 
-explore_waypoints:
-  - {x: 0.8, y: 0.0, yaw: 0.0}
-  - {x: 0.8, y: 0.8, yaw: 1.57}
-  - {x: 0.0, y: 0.8, yaw: 3.14}
-  - {x: -0.8, y: 0.8, yaw: 3.14}
-  - {x: -0.8, y: 0.0, yaw: -1.57}
-  - {x: -0.8, y: -0.8, yaw: -1.57}
-  - {x: 0.0, y: -0.8, yaw: 0.0}
-  - {x: 0.8, y: -0.8, yaw: 0.0}
+exploration_mode: frontier_coverage
+frontier_min_unknown_neighbors: 1
+frontier_cluster_min_cells: 4
+goal_clearance_cells: 2
+explore_goal_timeout_sec: 18.0
+explore_goal_tolerance_m: 0.18
+explore_retry_limit: 2
+active_scan_yaw_speed: 0.45
+active_scan_duration_sec: 5.0
+required_drop_zone_count: 3
+
+init_spin_yaw_speed: 0.6
+init_spin_duration_sec: 12.0
+init_max_attempts: 4
+init_nudge_distance_m: 0.4
+
+bbox_occupied_threshold: 50
+bbox_eps_m: 0.05
+bbox_min_perimeter_cells: 60
+bbox_min_free_cells: 40
+
+tag_corner_snap_distance_m: 0.55
+corner_vantage_inset_m: 0.85
+tag_tour_goal_timeout_sec: 35.0
+tag_dwell_sec: 1.5
+puck_search_quadrant_inset_m: 0.50
+locate_goal_timeout_sec: 25.0
+
+servo_goal_linear_speed: 0.12
+servo_goal_angular_gain: 1.4
+servo_goal_max_angular: 0.8
+
+visual_servo_speed: 0.04
+
+front_stop_m: 0.22
+rear_stop_m: 0.20
+side_stop_m: 0.12
+safety_sector_width_rad: 0.40
+max_safe_linear_speed: 0.18
+max_safe_angular_speed: 0.9
+safe_goal_margin_m: 0.20
+
+move_base_wait_sec: 60.0
+map_wait_sec: 30.0
+
+known_object_stale_sec: 0.0
