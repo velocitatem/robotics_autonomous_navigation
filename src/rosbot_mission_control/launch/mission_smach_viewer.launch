@@ -1,0 +1,7 @@
+<launch>
+  <!-- Live SMACH graph: active states and transitions (wx-based GUI).
+       mission_controller already runs IntrospectionServer("mission_smach", sm, "/SM_ROOT").
+       Install: sudo apt install ros-noetic-smach-viewer
+       Run in a second terminal while the mission is running. -->
+  <node pkg="smach_viewer" type="smach_viewer.py" name="smach_viewer" output="screen"/>
+</launch>

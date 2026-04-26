@@ -9,13 +9,34 @@ obstacle_layer:
   min_obstacle_height: 0.0
   combination_method: 1
   track_unknown_space: false
-  observation_sources: scan
+  observation_sources: scan puck_obstacles
   # expected_update_rate: 0 disables the "Sensor data is out of date" gate in
   # move_base. With sim time and a slow real-time factor any positive value
   # causes spurious lockouts where the planner refuses to command the base.
   scan: {sensor_frame: laser, data_type: LaserScan, topic: scan, marking: true, clearing: true, expected_update_rate: 0.0, inf_is_valid: true}
+  # Floor-level pucks are below the lidar plane (laser sits ~0.12 m, pucks are
+  # 0.03 m tall). The mission controller publishes a PointCloud2 of every
+  # known non-target/non-carried puck on /puck_obstacles in the map frame so
+  # the planner can route around them. observation_persistence is short so
+  # the costmap reflects the latest cloud (no raytrace clearing because
+  # nothing in the lidar can see them).
+  puck_obstacles:
+    sensor_frame: map
+    data_type: PointCloud2
+    topic: /puck_obstacles
+    marking: true
+    clearing: false
+    expected_update_rate: 0.0
+    observation_persistence: 0.4
+    obstacle_range: 3.0
+    raytrace_range: 3.0
+    inf_is_valid: false
+    min_obstacle_height: 0.0
+    max_obstacle_height: 0.30
 
 inflation_layer:
   enabled: true
   cost_scaling_factor: 4.0
-  inflation_radius: 0.18
+  # Slightly wider than before so point-sized /puck_obstacles markers get a
+  # comfortable buffer in both local and global plans.
+  inflation_radius: 0.22

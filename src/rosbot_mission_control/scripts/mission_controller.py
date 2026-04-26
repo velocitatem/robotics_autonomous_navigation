@@ -12,8 +12,10 @@ from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from nav_msgs.msg import OccupancyGrid
 from rosbot_competition_msgs.msg import SpatialDetection, MissionEvent
 from rosbot_competition_msgs.srv import GraspPuck
-from std_srvs.srv import Trigger
-from sensor_msgs.msg import LaserScan
+from std_srvs.srv import Trigger, Empty
+from sensor_msgs.msg import LaserScan, PointCloud2
+import sensor_msgs.point_cloud2 as pc2
+from std_msgs.msg import Header
 
 
 # Shared memory for the state machine
@@ -42,6 +44,11 @@ class MissionData:
         # otherwise the safety monitor flips front/rear and the robot drives
         # straight into walls.
         self.laser_yaw_offset = 0.0
+        # Map-frame (x, y) of every non-target, non-carried puck. Refreshed by
+        # PuckObstacleBroadcaster and consumed by SafetyMonitor + servo_to_map_point
+        # so the robot does not drive over floor-level pucks (the lidar at
+        # ~0.12 m never sees them).
+        self.latest_puck_obstacles = []
 
 
 mission_data = MissionData()
@@ -129,6 +136,20 @@ def publish_event(pub, text):
     rospy.loginfo(text)
 
 
+def clear_move_base_costmaps():
+    """Wipe both costmaps so previous puck markings are forgotten when the
+    set of obstacle pucks changes (after a grasp or a release). Pucks are
+    invisible to the lidar so they cannot be raytrace-cleared in the normal
+    way; this short call keeps the obstacle layer honest.
+    """
+    try:
+        proxy = rospy.ServiceProxy("/move_base/clear_costmaps", Empty)
+        proxy.wait_for_service(timeout=1.0)
+        proxy()
+    except Exception as exc:
+        rospy.logwarn_throttle(5.0, "[MISSION] clear_costmaps failed: %s", str(exc))
+
+
 def _scan_sector_min(scan, center_angle_base, half_width):
     """Minimum range within an angular sector.
 
@@ -177,14 +198,78 @@ def _scan_best_open_direction(scan, half_width=0.35, prefer_angle=None):
     return None if best is None else best[1]
 
 
+def _nearest_puck_distance(tf_buffer):
+    """Closest horizontal distance to any cached non-target / non-carried puck.
+
+    Used to limit in-place rotation when a floor-level puck is within the
+    robot's sweep radius (lidar still does not see them).
+    """
+    obstacles = mission_data.latest_puck_obstacles
+    if not obstacles:
+        return None
+    robot = get_robot_pose(tf_buffer)
+    if robot is None:
+        return None
+    nearest = None
+    for px, py in obstacles:
+        d = math.hypot(px - robot.x, py - robot.y)
+        if nearest is None or d < nearest:
+            nearest = d
+    return nearest
+
+
+def _puck_clearance_in_path(tf_buffer, half_width_rad, max_range_m, base_angle=0.0):
+    """Distance to the closest non-target/non-carried puck inside the given
+    sector (centred on `base_angle` in the robot frame).
+
+    Returns None if no puck is in the cone or the robot pose is unavailable.
+    The pucks are stored in map frame, so we transform via the current
+    robot pose+yaw lookup.
+    """
+    obstacles = mission_data.latest_puck_obstacles
+    if not obstacles:
+        return None
+    robot, yaw = get_robot_pose_yaw(tf_buffer)
+    if robot is None or yaw is None:
+        return None
+    nearest = None
+    for px, py in obstacles:
+        dx = px - robot.x
+        dy = py - robot.y
+        distance = math.hypot(dx, dy)
+        if distance > max_range_m:
+            continue
+        bearing = math.atan2(dy, dx)
+        if abs(_angle_wrap(bearing - yaw - base_angle)) > half_width_rad:
+            continue
+        if nearest is None or distance < nearest:
+            nearest = distance
+    return nearest
+
+
 class SafetyMonitor:
-    def __init__(self):
+    def __init__(self, tf_buffer=None):
         self.front_stop_m = float(rospy.get_param("~front_stop_m", 0.32))
         self.rear_stop_m = float(rospy.get_param("~rear_stop_m", 0.24))
         self.side_stop_m = float(rospy.get_param("~side_stop_m", 0.18))
         self.sector_width_rad = float(rospy.get_param("~safety_sector_width_rad", 0.45))
         self.max_safe_linear = float(rospy.get_param("~max_safe_linear_speed", 0.06))
         self.max_safe_angular = float(rospy.get_param("~max_safe_angular_speed", 0.45))
+        # Distance at which a non-target puck blocks forward motion. Rounded
+        # up from robot_radius (0.11 m) + a short reaction margin, so the
+        # gripper does not bowl through the puck when only the camera/memory
+        # knows it is there.
+        self.puck_stop_m = float(rospy.get_param("~puck_stop_m", 0.32))
+        # When a non-carried puck is this close, stop spinning in place so the
+        # footprint does not sweep the puck. Outside `puck_rotation_outer_m`,
+        # angular velocity is unconstrained for these obstacles.
+        self.puck_rotation_inner_m = float(
+            rospy.get_param("~puck_rotation_inner_m", 0.18)
+        )
+        self.puck_rotation_outer_m = float(
+            rospy.get_param("~puck_rotation_outer_m", 0.40)
+        )
+        self.tf_buffer = tf_buffer
 
     def filter_twist(self, cmd):
         filtered = Twist()
@@ -197,20 +282,98 @@ class SafetyMonitor:
             filtered.linear.x = 0.0
         if abs(filtered.angular.z) > 0.0 and not self.can_rotate():
             filtered.angular.z = 0.0
+        # Diff-drive in-place rotation can still clip a floor-level puck the
+        # lidar never sees. Scale (or cut) angular motion near cached obstacles.
+        if self.tf_buffer is not None and abs(filtered.angular.z) > 1e-6:
+            nearest = _nearest_puck_distance(self.tf_buffer)
+            if nearest is not None and nearest < self.puck_rotation_outer_m:
+                if nearest <= self.puck_rotation_inner_m:
+                    filtered.angular.z = 0.0
+                else:
+                    span = self.puck_rotation_outer_m - self.puck_rotation_inner_m
+                    if span > 1e-6:
+                        scale = (nearest - self.puck_rotation_inner_m) / span
+                        filtered.angular.z *= _clamp(scale, 0.0, 1.0)
         return filtered
 
     def can_drive_forward(self):
         front = _scan_sector_min(mission_data.latest_scan, 0.0, self.sector_width_rad)
-        return front is None or front > self.front_stop_m
+        if front is not None and front <= self.front_stop_m:
+            return False
+        # Floor-level pucks are invisible to the lidar; consult the cached
+        # puck_memory (refreshed by PuckObstacleBroadcaster) so we don't
+        # bump them off course while approaching another puck or zone.
+        if self.tf_buffer is not None:
+            puck = _puck_clearance_in_path(
+                self.tf_buffer, self.sector_width_rad, self.puck_stop_m + 0.10
+            )
+            if puck is not None and puck <= self.puck_stop_m:
+                return False
+        return True
 
     def can_drive_backward(self):
         rear = _scan_sector_min(mission_data.latest_scan, math.pi, self.sector_width_rad)
-        return rear is None or rear > self.rear_stop_m
+        if rear is not None and rear <= self.rear_stop_m:
+            return False
+        if self.tf_buffer is not None:
+            puck = _puck_clearance_in_path(
+                self.tf_buffer, self.sector_width_rad, self.puck_stop_m + 0.10, math.pi
+            )
+            if puck is not None and puck <= self.puck_stop_m:
+                return False
+        return True
 
     def can_rotate(self):
         # In-place rotation is the safest recovery motion for this circular base.
         # Blocking it in corners can deadlock the mission before the robot can face open space.
         return True
+
+
+class PuckObstacleBroadcaster:
+    """Publishes /puck_obstacles as a PointCloud2 of every puck the perception
+    layer knows about that the robot is *not* currently approaching or
+    carrying. move_base picks this up as an extra observation source so it
+    plans around floor-level pucks; the SafetyMonitor and the reactive servo
+    consume the cached list directly via mission_data.latest_puck_obstacles.
+    """
+
+    def __init__(self, frame_id="map", rate_hz=5.0, height_m=0.10):
+        self.frame_id = frame_id
+        self.height_m = float(height_m)
+        self.pub = rospy.Publisher("/puck_obstacles", PointCloud2, queue_size=1)
+        period = max(1.0 / float(rate_hz), 0.05)
+        self.timer = rospy.Timer(rospy.Duration(period), self._tick)
+
+    def _selected_pucks(self):
+        carrying = mission_data.carrying_color
+        # While we're heading to grab a puck (carrying_color is None and
+        # current_target_color is set), exclude that target colour so the
+        # safety gate doesn't refuse the very approach we asked for.
+        target = mission_data.current_target_color if not carrying else None
+        out = []
+        for color, entry in mission_data.puck_memory.items():
+            if color == carrying:
+                continue
+            if color == target:
+                continue
+            point = _memory_point(entry)
+            if point is None:
+                continue
+            out.append((float(point.x), float(point.y), self.height_m))
+        return out
+
+    def _tick(self, _event):
+        pts = self._selected_pucks()
+        # Cache flat (x, y) for the in-process consumers.
+        mission_data.latest_puck_obstacles = [(x, y) for x, y, _ in pts]
+        header = Header()
+        header.stamp = rospy.Time.now()
+        header.frame_id = self.frame_id
+        cloud = pc2.create_cloud_xyz32(header, pts)
+        try:
+            self.pub.publish(cloud)
+        except rospy.ROSException:
+            pass
 
 
 def publish_safe_twist(cmd_pub, cmd, safety, event_pub=None, label="motion"):
@@ -231,6 +394,14 @@ def is_goal_safe(goal, safety_margin_m=0.20):
     arena = mission_data.arena
     if arena is not None:
         if not arena.contains(goal["x"], goal["y"], safety_margin_m):
+            return False
+    # Reject map goals that would sit on top of a known *other* puck (already
+    # excluded from puck_memory for the current approach target by the
+    # broadcaster). Stops move_base and reactive servo from cutting corners
+    # through a stationary puck the lidar cannot mark.
+    puck_clear = float(rospy.get_param("~goal_puck_clearance_m", 0.28))
+    for px, py in mission_data.latest_puck_obstacles:
+        if math.hypot(goal["x"] - px, goal["y"] - py) < puck_clear:
             return False
     grid = mission_data.latest_map
     if grid is None or not grid.data:
@@ -269,7 +440,7 @@ def servo_to_map_point(
     """
 
     publish_event(event_pub, f"[MISSION] Servo navigation to {label}.")
-    safety = safety or SafetyMonitor()
+    safety = safety or SafetyMonitor(tf_buffer)
     start = rospy.Time.now()
     rate = rospy.Rate(10)
     last_distance = None
@@ -304,7 +475,19 @@ def servo_to_map_point(
         cmd.angular.z = _clamp(angular_gain * heading_error, -max_angular, max_angular)
         if abs(heading_error) < 0.5:
             forward_clear = _scan_sector_min(scan, 0.0, 0.30)
-            if forward_clear is None or forward_clear > safety.front_stop_m + 0.04:
+            # Floor-level pucks are invisible to the lidar; fold the cached
+            # puck obstacles into the same "is forward open" decision so the
+            # reactive servo doesn't drive over them.
+            puck_clear = _puck_clearance_in_path(
+                tf_buffer, half_width_rad=0.30, max_range_m=1.0
+            )
+            blocked = (
+                forward_clear is not None
+                and forward_clear <= safety.front_stop_m + 0.04
+            ) or (
+                puck_clear is not None and puck_clear <= safety.puck_stop_m + 0.04
+            )
+            if not blocked:
                 cmd.linear.x = linear_speed * max(0.25, 1.0 - abs(heading_error))
 
         if cmd.linear.x > 0.0 and last_distance is not None and distance >= last_distance - 0.01:
@@ -562,7 +745,7 @@ def navigate_to_goal(
     label,
     safety=None,
 ):
-    safety = safety or SafetyMonitor()
+    safety = safety or SafetyMonitor(tf_buffer)
     safe_margin = float(rospy.get_param("~safe_goal_margin_m", 0.20))
     if not is_goal_safe(goal, safe_margin):
         publish_event(
@@ -647,7 +830,7 @@ class InitScan(smach.State):
         self.event_pub = event_pub
         self.analyzer = analyzer
         self.cmd_pub = rospy.Publisher("/cmd_vel_servo", Twist, queue_size=1)
-        self.safety = SafetyMonitor()
+        self.safety = SafetyMonitor(self.tf_buffer)
         self.move_base = actionlib.SimpleActionClient("move_base", MoveBaseAction)
         self.move_base_ready = self.move_base.wait_for_server(rospy.Duration(1.0))
         self.init_spin_yaw_speed = float(rospy.get_param("~init_spin_yaw_speed", 0.5))
@@ -836,7 +1019,7 @@ class TagTour(smach.State):
         self.tf_buffer = tf_buffer
         self.event_pub = event_pub
         self.cmd_pub = rospy.Publisher("/cmd_vel_servo", Twist, queue_size=1)
-        self.safety = SafetyMonitor()
+        self.safety = SafetyMonitor(self.tf_buffer)
         self.corner_vantage_inset_m = float(rospy.get_param("~corner_vantage_inset_m", 0.55))
         self.tag_tour_goal_timeout_sec = float(
             rospy.get_param("~tag_tour_goal_timeout_sec", 25.0)
@@ -905,7 +1088,7 @@ class LocatePuck(smach.State):
         self.tf_buffer = tf_buffer
         self.event_pub = event_pub
         self.cmd_pub = rospy.Publisher("/cmd_vel_servo", Twist, queue_size=1)
-        self.safety = SafetyMonitor()
+        self.safety = SafetyMonitor(self.tf_buffer)
         self.known_object_stale_sec = float(rospy.get_param("~known_object_stale_sec", 0.0))
         self.puck_search_quadrant_inset_m = float(
             rospy.get_param("~puck_search_quadrant_inset_m", 0.45)
@@ -1009,7 +1192,7 @@ class Approach(smach.State):
         self.tf_buffer = tf_buffer
         self.event_pub = event_pub
         self.cmd_pub = rospy.Publisher("/cmd_vel_servo", Twist, queue_size=1)
-        self.safety = SafetyMonitor()
+        self.safety = SafetyMonitor(self.tf_buffer)
         self.approach_distance_m = float(rospy.get_param("~approach_distance_m", 0.30))
         self.goal_tolerance_m = float(rospy.get_param("~approach_goal_tolerance_m", 0.18))
         self.servo_goal_linear_speed = float(
@@ -1096,8 +1279,8 @@ class VisualServo(smach.State):
         )
         self.cmd_pub = rospy.Publisher("/cmd_vel_servo", Twist, queue_size=1)
         self.event_pub = event_pub
-        self.safety = SafetyMonitor()
         self.tf_buffer = tf_buffer
+        self.safety = SafetyMonitor(self.tf_buffer)
 
     def execute(self, userdata):
         publish_event(self.event_pub, "[MISSION] State: VISUAL_SERVO")
@@ -1239,11 +1422,12 @@ class VisualServo(smach.State):
 
 
 class Grab(smach.State):
-    def __init__(self, event_pub):
+    def __init__(self, event_pub, tf_buffer=None):
         smach.State.__init__(self, outcomes=["grabbed", "missed"])
         self.grasp_srv = rospy.ServiceProxy("/grasp_puck", GraspPuck)
         self.event_pub = event_pub
-        self.safety = SafetyMonitor()
+        self.tf_buffer = tf_buffer
+        self.safety = SafetyMonitor(self.tf_buffer)
 
     def execute(self, userdata):
         publish_event(self.event_pub, "[MISSION] State: GRAB")
@@ -1261,6 +1445,9 @@ class Grab(smach.State):
                 # ground pose too so any fallback path doesn't re-use it.
                 mission_data.carrying_color = color
                 mission_data.puck_memory.pop(color, None)
+                # Drop any cached marks of the carried puck so the costmap
+                # only reflects the remaining obstacle pucks.
+                clear_move_base_costmaps()
                 return "grabbed"
             else:
                 publish_event(
@@ -1295,7 +1482,7 @@ class Deliver(smach.State):
         self.tf_buffer = tf_buffer
         self.event_pub = event_pub
         self.cmd_pub = rospy.Publisher("/cmd_vel_servo", Twist, queue_size=1)
-        self.safety = SafetyMonitor()
+        self.safety = SafetyMonitor(self.tf_buffer)
         # The 0.25 m drop-zone marker sits at lidar height, so the standoff has
         # to clear robot_radius (~0.11) + inflation (~0.18) + the marker half
         # width (~0.13) = ~0.42 m before move_base will plan a path. Default a
@@ -1395,6 +1582,11 @@ class Deliver(smach.State):
                 mission_data.carrying_color = None
                 mission_data.current_target_color = None
                 self._backup_after_release()
+                # The released puck (now stationary on the floor) becomes
+                # an obstacle for the next leg's planning. Reset costmaps
+                # so the obstacle layer immediately reflects only the still-
+                # remaining pucks via the next /puck_obstacles cloud.
+                clear_move_base_costmaps()
                 return "delivered"
             publish_event(
                 self.event_pub,
@@ -1421,6 +1613,7 @@ class Deliver(smach.State):
         mission_data.target_index += 1
         mission_data.current_target_color = None
         self._backup_after_release()
+        clear_move_base_costmaps()
         return "failed"
 
     def _backup_after_release(self):
@@ -1554,6 +1747,11 @@ def main():
     _calibrate_laser_offset(tf_buffer)
     _wait_for_move_base(float(rospy.get_param("~move_base_wait_sec", 60.0)))
 
+    # Stream the floor-level pucks into move_base's costmap and the in-process
+    # safety gate. Lidar at z~0.12 m never sees the 3 cm tall pucks, so without
+    # this the robot would happily plan straight through them.
+    PuckObstacleBroadcaster(rate_hz=5.0)
+
     # Build SMACH
     sm = smach.StateMachine(outcomes=["MISSION_COMPLETE", "ABORTED"])
     with sm:
@@ -1601,7 +1799,7 @@ def main():
         )
         smach.StateMachine.add(
             "GRAB",
-            Grab(event_pub),
+            Grab(event_pub, tf_buffer),
             transitions={"grabbed": "DELIVER", "missed": "VISUAL_SERVO"},
         )
         smach.StateMachine.add(

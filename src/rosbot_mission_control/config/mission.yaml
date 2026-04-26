@@ -66,6 +66,13 @@ safety_sector_width_rad: 0.40
 max_safe_linear_speed: 0.18
 max_safe_angular_speed: 0.9
 safe_goal_margin_m: 0.20
+# Non-target pucks are below the lidar plane; we publish them to the costmap
+# and gate cmd_vel. These tune how close the base may get to a *known* other
+# puck (not the approach target, not the colour in the gripper).
+goal_puck_clearance_m: 0.28
+puck_stop_m: 0.32
+puck_rotation_inner_m: 0.18
+puck_rotation_outer_m: 0.40
 
 move_base_wait_sec: 60.0
 map_wait_sec: 30.0

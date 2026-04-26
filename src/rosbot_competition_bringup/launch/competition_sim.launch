@@ -3,10 +3,22 @@
   <arg name="enable_dashboard" default="true"/>
   <arg name="enable_slam" default="true"/>
   <arg name="enable_move_base" default="true"/>
+  <!-- Scenario overrides for randomised robustness runs. Defaults match the
+       canonical SE-corner spawn so a plain `roslaunch` is unchanged. -->
+  <arg name="robot_x" default="1.15"/>
+  <arg name="robot_y" default="-0.85"/>
+  <arg name="robot_z" default="0.05"/>
+  <arg name="robot_yaw" default="2.52"/>
+  <arg name="objects_config" default="$(find rosbot_simulation)/config/objects.yaml"/>
 
   <include file="$(find rosbot_simulation)/launch/competition_world.launch">
     <arg name="gui" value="$(arg gui)"/>
     <arg name="enable_sim_ir" value="false"/>
+    <arg name="x" value="$(arg robot_x)"/>
+    <arg name="y" value="$(arg robot_y)"/>
+    <arg name="z" value="$(arg robot_z)"/>
+    <arg name="yaw" value="$(arg robot_yaw)"/>
+    <arg name="objects_config" value="$(arg objects_config)"/>
   </include>
 
   <include file="$(find rosbot_competition_bringup)/launch/competition_system.launch">
