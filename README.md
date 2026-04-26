@@ -1,4 +1,4 @@
-# ROSbot Competition Workspace
+![](./banner.png)
 
 Modular ROS Noetic stack for autonomous puck pickup and color-matched delivery, with navigation, perception, manipulation, mission orchestration, and live monitoring.
 
