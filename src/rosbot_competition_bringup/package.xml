@@ -15,7 +15,6 @@
   <exec_depend>rosbot_navigation</exec_depend>
   <exec_depend>rosbot_perception</exec_depend>
   <exec_depend>rosbot_simulation</exec_depend>
-  <exec_depend>rosbot_description</exec_depend>
   <exec_depend>rviz</exec_depend>
 
   <export/>

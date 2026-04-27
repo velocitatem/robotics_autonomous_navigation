@@ -5,7 +5,8 @@
   <arg name="enable_ir_safety" default="true"/>
   <arg name="enable_laser_nav_safety" default="true"/>
   <arg name="enable_inspector" default="true"/>
-  <arg name="inspector_rviz_config" default="$(find rosbot_description)/rviz/rosbot.rviz"/>
+  <!-- Optional extra args, e.g. rviz_args:="-d /path/to/config.rviz" -->
+  <arg name="rviz_args" default=""/>
   <arg name="enable_dashboard" default="false"/>
   <arg name="enable_sim_manipulation" default="false"/>
 
@@ -22,6 +23,6 @@
     <arg name="use_sim" value="$(arg enable_sim_manipulation)"/>
   </include>
   <include file="$(find rosbot_mission_control)/launch/mission_controller.launch"/>
-  <node if="$(arg enable_inspector)" pkg="rviz" type="rviz" name="competition_inspector" args="-d $(arg inspector_rviz_config)" output="screen"/>
+  <node if="$(arg enable_inspector)" pkg="rviz" type="rviz" name="competition_inspector" args="$(arg rviz_args)" output="screen"/>
   <include if="$(arg enable_dashboard)" file="$(find rosbot_dashboard)/launch/dashboard.launch"/>
 </launch>
