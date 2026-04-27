@@ -1165,7 +1165,7 @@ class DiscoverCorners(smach.State):
             return "tags_complete"
         publish_event(
             self.event_pub,
-            "[MISSION] Missing corner tags after scan; running another in-place scan.",
+            "[MISSION] Missing corner tags after scan; running corner vantage tour.",
         )
         return "need_scan"
 
@@ -2051,8 +2051,13 @@ def main():
             DiscoverCorners(tf_buffer, event_pub, analyzer),
             transitions={
                 "tags_complete": "LOCATE_PUCK",
-                "need_scan": "INIT_SCAN",
+                "need_scan": "TAG_TOUR",
             },
+        )
+        smach.StateMachine.add(
+            "TAG_TOUR",
+            TagTour(tf_buffer, event_pub),
+            transitions={"tour_progress": "INIT_SCAN"},
         )
         smach.StateMachine.add(
             "LOCATE_PUCK",

@@ -7,6 +7,7 @@ import message_filters
 import numpy as np
 import rospy
 import tf2_ros
+
 # Importing tf2_geometry_msgs registers PointStamped/PoseStamped converters
 # with tf2_ros.Buffer. Without it, tf_buffer.transform(PointStamped) raises
 # TypeException and every detection callback crashes silently.
@@ -330,9 +331,24 @@ class PerceptionNode:
             map_point = self.tf_buffer.transform(
                 source, self.map_frame, rospy.Duration(0.07)
             )
+        except tf2_ros.ExtrapolationException:
+            source.header.stamp = rospy.Time(0)
+            try:
+                map_point = self.tf_buffer.transform(
+                    source, self.map_frame, rospy.Duration(0.07)
+                )
+                rospy.logwarn_throttle(
+                    2.0,
+                    "[VISION] Camera/TF timestamps are out of sync; using latest TF for projection.",
+                )
+            except (
+                tf2_ros.LookupException,
+                tf2_ros.ExtrapolationException,
+                tf2_ros.ConnectivityException,
+            ):
+                return
         except (
             tf2_ros.LookupException,
-            tf2_ros.ExtrapolationException,
             tf2_ros.ConnectivityException,
         ):
             return

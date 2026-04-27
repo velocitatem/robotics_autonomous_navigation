@@ -3,12 +3,11 @@ global_costmap:
   robot_base_frame: base_link
   update_frequency: 2.5
   publish_frequency: 1.5
-  static_map: false
   rolling_window: true
   width: 10.0
   height: 10.0
   resolution: 0.05
-  transform_tolerance: 2.0
+  transform_tolerance: 3.5
   plugins:
     - {name: obstacle_layer, type: "costmap_2d::ObstacleLayer"}
     - {name: inflation_layer, type: "costmap_2d::InflationLayer"}

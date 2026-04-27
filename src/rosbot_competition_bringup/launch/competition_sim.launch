@@ -1,5 +1,6 @@
 <launch>
   <arg name="gui" default="true"/>
+  <arg name="enable_inspector" default="$(arg gui)"/>
   <arg name="enable_dashboard" default="false"/>
   <arg name="enable_slam" default="true"/>
   <arg name="enable_move_base" default="true"/>
@@ -27,6 +28,7 @@
     <arg name="enable_move_base" value="$(arg enable_move_base)"/>
     <arg name="use_slam_toolbox" value="$(arg use_slam_toolbox)"/>
     <arg name="enable_ir_safety" value="false"/>
+    <arg name="enable_inspector" value="$(arg enable_inspector)"/>
     <arg name="enable_dashboard" value="$(arg enable_dashboard)"/>
     <arg name="enable_sim_manipulation" value="true"/>
   </include>

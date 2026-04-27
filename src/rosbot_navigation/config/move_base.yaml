@@ -11,8 +11,8 @@ oscillation_distance: 0.20
 # Keep transform tolerance explicitly mirrored here. In some launch/override
 # combinations nested costmap params can be shadowed, and move_base then runs
 # with a much tighter default tolerance that causes pose lookup lockouts.
-global_costmap/transform_tolerance: 2.0
-local_costmap/transform_tolerance: 2.0
+global_costmap/transform_tolerance: 3.5
+local_costmap/transform_tolerance: 3.5
 # Limit recovery to a single conservative costmap clear. Without this,
 # move_base burns ~90 s through rotate-recovery cycles before aborting,
 # which made delivery look frozen. With one quick clear the action server

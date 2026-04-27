@@ -20,7 +20,7 @@ All core modules live under `src/` as ROS packages:
 
 | Package | Main entrypoints | Responsibility |
 | --- | --- | --- |
-| `rosbot_competition_bringup` | `launch/competition_system.launch` | Starts and wires the full system; exposes launch toggles (`enable_slam`, `enable_move_base`, `enable_ir_safety`, `enable_dashboard`). |
+| `rosbot_competition_bringup` | `launch/competition_system.launch` | Starts and wires the full system; exposes launch toggles (`enable_slam`, `enable_move_base`, `enable_ir_safety`, `enable_inspector`, `enable_dashboard`). |
 | `rosbot_navigation` | `launch/navigation.launch`, `scripts/ir_safety_stop.py` | Runs mapping (`slam_toolbox` or `gmapping`), `move_base`, and `twist_mux`; publishes safe robot velocity commands. |
 | `rosbot_perception` | `scripts/perception_node.py`, `launch/perception.launch`, `scripts/hsv_calibration.py` | Detects colored pucks + ArUco markers, projects detections to `map`, and publishes annotated camera frames. |
 | `rosbot_manipulation` | `scripts/manipulation_node.py`, `launch/manipulation.launch` | Controls gripper open/close and validates grasp success from servo load feedback. |
