@@ -331,9 +331,14 @@ class PerceptionNode:
                 self.map_frame, camera_frame, stamp, rospy.Duration(0.07)
             )
             map_point = do_transform_point(source, transform)
+        except tf2_ros.ExtrapolationException:
+            rospy.logwarn_throttle(
+                2.0,
+                "[VISION] Camera/TF timestamps are out of sync; dropping projection for this frame.",
+            )
+            return
         except (
             tf2_ros.LookupException,
-            tf2_ros.ExtrapolationException,
             tf2_ros.ConnectivityException,
         ):
             return

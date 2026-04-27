@@ -25,6 +25,8 @@ obstacle_layer:
     data_type: PointCloud2
     topic: /puck_obstacles
     marking: true
+    # Pucks are manipulated/removed by the robot, so this source must be
+    # raytrace-clearable to prevent permanent ghost obstacles in the map.
     clearing: true
     expected_update_rate: 0.0
     observation_persistence: 0.4
