@@ -57,6 +57,8 @@ class RosThread(QThread):
 class Dashboard(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.map_frame = rospy.get_param("~map_frame", "map")
+        self.map_topic = rospy.get_param("~map_topic", "/map")
         self.scan_topic = rospy.get_param("~scan_topic", "/scan")
         self.setWindowTitle("ROSbot Competition Dashboard")
         self.resize(1200, 700)
@@ -85,7 +87,9 @@ class Dashboard(QMainWindow):
             # If we had a pre-made config, we would load it.
             # For now, just add a Map and RobotModel dynamically
             manager = self.rviz_frame.getManager()
-            manager.createDisplay("rviz/Map", "LiveMap", True)
+            manager.setFixedFrame(self.map_frame)
+            map_display = manager.createDisplay("rviz/Map", "LiveMap", True)
+            map_display.subProp("Topic").setValue(self.map_topic)
             manager.createDisplay("rviz/RobotModel", "Robot", True)
             laser_display = manager.createDisplay("rviz/LaserScan", "Scan", True)
             laser_display.subProp("Topic").setValue(self.scan_topic)
