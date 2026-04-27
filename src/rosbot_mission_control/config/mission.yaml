@@ -41,8 +41,12 @@ bbox_min_perimeter_cells: 60
 bbox_min_free_cells: 40
 
 tag_corner_snap_distance_m: 0.55
-corner_vantage_inset_m: 0.85
-tag_tour_goal_timeout_sec: 35.0
+# Stand well inside the arena toward center so move_base/servo are not trying to
+# park inside the corner pocket (oscillation / no plan with inflated walls).
+corner_vantage_inset_m: 1.12
+tag_tour_goal_timeout_sec: 45.0
+tag_vantage_yaw_align_timeout_sec: 12.0
+tag_vantage_yaw_tolerance_rad: 0.18
 tag_dwell_sec: 1.5
 puck_search_quadrant_inset_m: 0.50
 locate_goal_timeout_sec: 25.0

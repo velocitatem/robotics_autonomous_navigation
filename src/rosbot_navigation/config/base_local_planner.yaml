@@ -38,9 +38,10 @@ DWAPlannerROS:
 
   path_distance_bias: 24.0
   goal_distance_bias: 18.0
-  # How strongly to stay away from obstacles in the costmap. The old 0.10
-  # under-weighted walls vs path/goal and encouraged grazing in tight space.
-  occdist_scale: 0.35
+  # How strongly to stay away from obstacles in the costmap. Trade off with
+  # corner goals: very high values + wide inflation make narrow corner vantages
+  # unreachable (oscillation / no plan).
+  occdist_scale: 0.30
 
   # Look a bit further along the path when scoring trajectories near obstacles.
   forward_point_distance: 0.14

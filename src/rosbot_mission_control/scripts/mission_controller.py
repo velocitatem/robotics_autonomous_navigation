@@ -513,6 +513,50 @@ def servo_to_map_point(
     return False
 
 
+def servo_align_to_yaw(
+    tf_buffer,
+    cmd_pub,
+    event_pub,
+    target_yaw,
+    timeout_sec,
+    angular_gain,
+    max_angular,
+    label,
+    safety,
+    tolerance_rad,
+):
+    """Rotate in place to face an ArUco / map heading after a position-only servo."""
+    publish_event(
+        event_pub, f"[MISSION] Aligning camera heading for {label} (yaw toward tag)."
+    )
+    safety = safety or SafetyMonitor(tf_buffer)
+    start = rospy.Time.now()
+    rate = rospy.Rate(20)
+    while not rospy.is_shutdown():
+        _robot, yaw = get_robot_pose_yaw(tf_buffer)
+        if _robot is None or yaw is None:
+            return False
+        err = _angle_wrap(float(target_yaw) - yaw)
+        if abs(err) < tolerance_rad:
+            cmd_pub.publish(Twist())
+            return True
+        if (rospy.Time.now() - start).to_sec() >= timeout_sec:
+            cmd_pub.publish(Twist())
+            publish_event(
+                event_pub, f"[MISSION] Heading align for {label} timed out (yaw err ~{err:.2f} rad)."
+            )
+            return False
+        cmd = Twist()
+        cmd.angular.z = _clamp(angular_gain * err, -max_angular, max_angular)
+        publish_safe_twist(cmd_pub, cmd, safety, event_pub, label)
+        try:
+            rate.sleep()
+        except rospy.ROSInterruptException:
+            break
+    cmd_pub.publish(Twist())
+    return False
+
+
 class OccupancyAnalyzer:
     def __init__(self):
         self.occupied_threshold = int(rospy.get_param("~bbox_occupied_threshold", 50))
@@ -782,9 +826,44 @@ def navigate_to_goal(
         if robot is not None:
             if math.hypot(robot.x - goal["x"], robot.y - goal["y"]) <= tolerance_m:
                 move_base.cancel_goal()
+                if "yaw" in goal:
+                    ytol = float(rospy.get_param("~tag_vantage_yaw_tolerance_rad", 0.2))
+                    ytimeout = float(rospy.get_param("~tag_vantage_yaw_align_timeout_sec", 10.0))
+                    servo_align_to_yaw(
+                        tf_buffer,
+                        cmd_pub,
+                        event_pub,
+                        float(goal["yaw"]),
+                        ytimeout,
+                        angular_gain,
+                        max_angular,
+                        label,
+                        safety,
+                        ytol,
+                    )
                 return True, move_base_ready
         state = move_base.get_state()
         if state == 3:
+            if "yaw" in goal:
+                _, yaw_now = get_robot_pose_yaw(tf_buffer)
+                if yaw_now is not None:
+                    ytol = float(rospy.get_param("~tag_vantage_yaw_tolerance_rad", 0.2))
+                    if abs(_angle_wrap(float(goal["yaw"]) - yaw_now)) > ytol:
+                        ytimeout = float(
+                            rospy.get_param("~tag_vantage_yaw_align_timeout_sec", 10.0)
+                        )
+                        servo_align_to_yaw(
+                            tf_buffer,
+                            cmd_pub,
+                            event_pub,
+                            float(goal["yaw"]),
+                            ytimeout,
+                            angular_gain,
+                            max_angular,
+                            label,
+                            safety,
+                            ytol,
+                        )
             return True, move_base_ready
         if state in [4, 5, 9]:
             # 4=ABORTED, 5=REJECTED, 9=LOST. Surface this so the operator
@@ -810,6 +889,21 @@ def navigate_to_goal(
                 label,
                 safety,
             )
+            if arrived and "yaw" in goal:
+                ytol = float(rospy.get_param("~tag_vantage_yaw_tolerance_rad", 0.2))
+                ytimeout = float(rospy.get_param("~tag_vantage_yaw_align_timeout_sec", 10.0))
+                servo_align_to_yaw(
+                    tf_buffer,
+                    cmd_pub,
+                    event_pub,
+                    float(goal["yaw"]),
+                    ytimeout,
+                    angular_gain,
+                    max_angular,
+                    label,
+                    safety,
+                    ytol,
+                )
             return arrived, move_base_ready
         if (rospy.Time.now() - start).to_sec() >= timeout_sec:
             move_base.cancel_goal()

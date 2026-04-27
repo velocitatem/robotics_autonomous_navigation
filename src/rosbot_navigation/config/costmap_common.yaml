@@ -39,4 +39,4 @@ inflation_layer:
   cost_scaling_factor: 4.0
   # Keep plans farther from walls and puck markers. Increase if the robot
   # still grazes or scrapes barriers (trade-off: tight spots get harder).
-  inflation_radius: 0.32
+  inflation_radius: 0.28
