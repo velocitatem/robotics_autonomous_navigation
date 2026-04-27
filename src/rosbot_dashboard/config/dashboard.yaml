@@ -3,6 +3,7 @@ base_frame: base_link
 
 video_topic: /perception/annotated_image
 map_topic: /map
+scan_topic: /scan
 events_topic: /mission_events
 detections_topic: /perception/spatial_detections
 

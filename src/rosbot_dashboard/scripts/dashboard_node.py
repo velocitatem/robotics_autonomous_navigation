@@ -57,6 +57,7 @@ class RosThread(QThread):
 class Dashboard(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.scan_topic = rospy.get_param("~scan_topic", "/scan")
         self.setWindowTitle("ROSbot Competition Dashboard")
         self.resize(1200, 700)
 
@@ -86,6 +87,8 @@ class Dashboard(QMainWindow):
             manager = self.rviz_frame.getManager()
             manager.createDisplay("rviz/Map", "LiveMap", True)
             manager.createDisplay("rviz/RobotModel", "Robot", True)
+            laser_display = manager.createDisplay("rviz/LaserScan", "Scan", True)
+            laser_display.subProp("Topic").setValue(self.scan_topic)
 
             top_layout.addWidget(self.rviz_frame)
         else:
