@@ -15,6 +15,14 @@
       <param name="transform_publish_period" value="0.05"/>
       <param name="minimum_time_interval" value="0.08"/>
     </node>
+
+    <!-- move_base static_layer expects /static_map service, while
+         slam_toolbox exposes /slam_toolbox/dynamic_map. Bridge them so
+         move_base can complete costmap initialization and advertise action topics. -->
+    <node pkg="rosbot_navigation" type="static_map_proxy.py" name="static_map_proxy" output="screen">
+      <param name="service_name" value="/static_map"/>
+      <param name="target_service" value="/slam_toolbox/dynamic_map"/>
+    </node>
   </group>
 
   <group unless="$(arg use_slam_toolbox)">
