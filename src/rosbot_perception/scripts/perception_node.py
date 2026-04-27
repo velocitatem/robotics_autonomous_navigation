@@ -336,6 +336,8 @@ class PerceptionNode:
             )
             map_point = do_transform_point(source, transform)
         except tf2_ros.ExtrapolationException:
+            # Intentional: do not fall back to Time(0), because latest-TF
+            # projection while turning/skidding can mis-map puck/tag positions.
             rospy.logwarn_throttle(
                 2.0,
                 "[VISION] Camera/TF timestamps are out of sync; dropping projection for this frame.",

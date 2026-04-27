@@ -30,6 +30,8 @@ DWAPlannerROS:
   yaw_goal_tolerance: 0.30
   latch_xy_goal_tolerance: false
 
+  # Extend trajectory horizon so DWA evaluates obstacle interactions farther
+  # ahead instead of reacting only near the bumper footprint.
   sim_time: 2.5
   sim_granularity: 0.025
   vx_samples: 10
