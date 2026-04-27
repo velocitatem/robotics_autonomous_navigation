@@ -41,6 +41,9 @@ class PerceptionNode:
         self.min_publish_distance_m = float(
             rospy.get_param("~min_publish_distance_m", 0.05)
         )
+        self.tf_lookup_timeout_sec = float(
+            rospy.get_param("~tf_lookup_timeout_sec", 0.07)
+        )
         # Remove noisy sky/ceiling band: CV + ArUco run on the image below this strip.
         self.crop_top_fraction = float(rospy.get_param("~crop_top_fraction", 0.20))
 
@@ -327,8 +330,9 @@ class PerceptionNode:
         source.point = Point(x=x, y=y, z=z)
 
         try:
+            tf_timeout = rospy.Duration(self.tf_lookup_timeout_sec)
             transform = self.tf_buffer.lookup_transform(
-                self.map_frame, camera_frame, stamp, rospy.Duration(0.07)
+                self.map_frame, camera_frame, stamp, tf_timeout
             )
             map_point = do_transform_point(source, transform)
         except tf2_ros.ExtrapolationException:
