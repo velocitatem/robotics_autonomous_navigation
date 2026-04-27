@@ -14,8 +14,8 @@ depth_patch_radius_px: 2
 publish_cooldown_sec: 0.40
 min_publish_distance_m: 0.05
 
-# Ignore the top fraction of the frame (noise at top of FOV); puck + ArUco use the crop below.
-crop_top_fraction: 0.10
+# Use full image while tuning ArUco/puck detection in the real arena.
+crop_top_fraction: 0.00
 
 hsv_ranges:
   red:
