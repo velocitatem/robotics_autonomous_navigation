@@ -37,6 +37,6 @@ obstacle_layer:
 inflation_layer:
   enabled: true
   cost_scaling_factor: 4.0
-  # Slightly wider than before so point-sized /puck_obstacles markers get a
-  # comfortable buffer in both local and global plans.
-  inflation_radius: 0.22
+  # Keep plans farther from walls and puck markers. Increase if the robot
+  # still grazes or scrapes barriers (trade-off: tight spots get harder).
+  inflation_radius: 0.32

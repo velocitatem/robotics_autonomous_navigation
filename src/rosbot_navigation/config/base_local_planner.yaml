@@ -2,14 +2,16 @@ DWAPlannerROS:
   # Robot velocity envelope. Allow a small reverse component so DWA can back
   # away from corners; min_vel_x = 0 prevents that and is a common reason DWA
   # reports "failed to produce path" inside the arena.
-  max_vel_x: 0.22
+  # Slightly lower forward cap on hardware so impacts (if any) are gentler; raise
+  # if maps are good and the robot is timid in open areas.
+  max_vel_x: 0.16
   min_vel_x: -0.10
   max_vel_y: 0.0
   min_vel_y: 0.0
   # Total planar speed window. min_vel_trans must be strictly less than
   # max_vel_trans, otherwise DWA rejects all samples. Zero allows in-place
   # rotation; in-place rotation is gated below by min_in_place_vel_theta.
-  max_vel_trans: 0.22
+  max_vel_trans: 0.16
   min_vel_trans: 0.0
   trans_stopped_vel: 0.04
 
@@ -36,9 +38,12 @@ DWAPlannerROS:
 
   path_distance_bias: 24.0
   goal_distance_bias: 18.0
-  occdist_scale: 0.10
+  # How strongly to stay away from obstacles in the costmap. The old 0.10
+  # under-weighted walls vs path/goal and encouraged grazing in tight space.
+  occdist_scale: 0.35
 
-  forward_point_distance: 0.10
+  # Look a bit further along the path when scoring trajectories near obstacles.
+  forward_point_distance: 0.14
 
   scaling_speed: 0.10
   max_scaling_factor: 0.20

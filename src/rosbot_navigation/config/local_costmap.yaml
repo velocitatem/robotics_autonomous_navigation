@@ -8,7 +8,9 @@ local_costmap:
   width: 2.5
   height: 2.5
   resolution: 0.05
-  transform_tolerance: 0.5
+  # Slightly looser to tolerate PC↔robot clock/network jitter; fix NTP on both
+  # hosts for the real solution (tighter tolerance is better when time sync is good).
+  transform_tolerance: 0.85
   plugins:
     - {name: obstacle_layer, type: "costmap_2d::ObstacleLayer"}
     - {name: inflation_layer, type: "costmap_2d::InflationLayer"}
