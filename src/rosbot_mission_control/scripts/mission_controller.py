@@ -1111,9 +1111,7 @@ class InitScan(smach.State):
 
 class DiscoverCorners(smach.State):
     def __init__(self, tf_buffer, event_pub, analyzer):
-        smach.State.__init__(
-            self, outcomes=["tags_complete", "tags_missing", "need_scan"]
-        )
+        smach.State.__init__(self, outcomes=["tags_complete", "need_scan"])
         self.tf_buffer = tf_buffer
         self.event_pub = event_pub
         self.analyzer = analyzer
@@ -1165,7 +1163,11 @@ class DiscoverCorners(smach.State):
         )
         if known >= self.required_drop_zone_count:
             return "tags_complete"
-        return "tags_missing"
+        publish_event(
+            self.event_pub,
+            "[MISSION] Missing corner tags after scan; running another in-place scan.",
+        )
+        return "need_scan"
 
 
 class TagTour(smach.State):
@@ -2049,14 +2051,8 @@ def main():
             DiscoverCorners(tf_buffer, event_pub, analyzer),
             transitions={
                 "tags_complete": "LOCATE_PUCK",
-                "tags_missing": "TAG_TOUR",
                 "need_scan": "INIT_SCAN",
             },
-        )
-        smach.StateMachine.add(
-            "TAG_TOUR",
-            TagTour(tf_buffer, event_pub),
-            transitions={"tour_progress": "DISCOVER_CORNERS"},
         )
         smach.StateMachine.add(
             "LOCATE_PUCK",
