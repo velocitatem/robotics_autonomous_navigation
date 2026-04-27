@@ -8,10 +8,9 @@ import numpy as np
 import rospy
 import tf2_ros
 
-# Importing tf2_geometry_msgs registers PointStamped/PoseStamped converters
-# with tf2_ros.Buffer. Without it, tf_buffer.transform(PointStamped) raises
-# TypeException and every detection callback crashes silently.
-import tf2_geometry_msgs  # noqa: F401  (registration side-effect)
+# Importing do_transform_point from tf2_geometry_msgs also registers
+# PointStamped/PoseStamped converters with tf2_ros.
+from tf2_geometry_msgs import do_transform_point
 from cv_bridge import CvBridge, CvBridgeError
 from geometry_msgs.msg import Point, PointStamped
 from rosbot_competition_msgs.msg import SpatialDetection, MissionEvent
@@ -328,12 +327,10 @@ class PerceptionNode:
         source.point = Point(x=x, y=y, z=z)
 
         try:
-            self.tf_buffer.lookup_transform(
+            transform = self.tf_buffer.lookup_transform(
                 self.map_frame, camera_frame, stamp, rospy.Duration(0.07)
             )
-            map_point = self.tf_buffer.transform(
-                source, self.map_frame, rospy.Duration(0.07)
-            )
+            map_point = do_transform_point(source, transform)
         except (
             tf2_ros.LookupException,
             tf2_ros.ExtrapolationException,

@@ -38,7 +38,7 @@ class MissionData:
         # is carrying (whose perception fix appears at the robot's own pose).
         self.carrying_color = None
         # Yaw of the laser frame expressed in base_link (radians).
-        # On the rosbot the lidar is mounted with rpy=(0,0,3.14159), i.e. the
+        # On the rosbot the lidar is mounted with rpy≈(0,0,π), i.e. the
         # laser's +X axis points toward the robot's REAR. We must know this
         # offset to correctly interpret scan angles as "robot-forward",
         # otherwise the safety monitor flips front/rear and the robot drives
@@ -1964,7 +1964,7 @@ def _wait_for_first_scan(timeout_sec):
 def _calibrate_laser_offset(tf_buffer, timeout_sec=10.0):
     """Look up the static base_link -> laser transform and stash its yaw.
 
-    The rosbot mounts the rplidar with rpy=(0,0,3.14159), i.e. the laser frame's
+    The rosbot mounts the rplidar with rpy≈(0,0,π), i.e. the laser frame's
     +X is the robot's REAR. We need the offset to interpret scan angles as
     robot-forward in safety/servo logic. If the lookup fails we fall back to
     the scan's own frame_id and assume zero offset (warns loudly).
