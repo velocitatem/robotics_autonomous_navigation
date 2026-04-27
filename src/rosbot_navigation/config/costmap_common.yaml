@@ -1,5 +1,5 @@
 footprint: [[-0.13, -0.13], [-0.13, 0.13], [0.16, 0.13], [0.16, -0.13]]
-# Keep planner clearance above IR stop_distance (0.16 m) with +0.04 m margin.
+# Keep planner clearance above /ir_safety_stop/stop_distance (0.16 m) + margin.
 robot_radius: 0.20  # 0.16m (IR stop_distance) + 0.04m safety margin
 
 obstacle_layer:

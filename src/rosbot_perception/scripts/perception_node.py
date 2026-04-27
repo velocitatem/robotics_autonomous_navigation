@@ -346,7 +346,15 @@ class PerceptionNode:
         except (
             tf2_ros.LookupException,
             tf2_ros.ConnectivityException,
-        ):
+        ) as exc:
+            rospy.logwarn_throttle(
+                2.0,
+                "[VISION] TF lookup failed (%s -> %s @ %.3f): %s",
+                camera_frame,
+                self.map_frame,
+                stamp.to_sec(),
+                str(exc),
+            )
             return
 
         key = f"{object_class}:{color}:{marker_id}"
