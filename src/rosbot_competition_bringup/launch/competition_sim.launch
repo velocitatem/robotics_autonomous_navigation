@@ -3,6 +3,7 @@
   <arg name="enable_dashboard" default="false"/>
   <arg name="enable_slam" default="true"/>
   <arg name="enable_move_base" default="true"/>
+  <arg name="use_slam_toolbox" default="true"/>
   <!-- Scenario overrides for randomised robustness runs. Defaults match the
        canonical SE-corner spawn so a plain `roslaunch` is unchanged. -->
   <arg name="robot_x" default="1.15"/>
@@ -24,7 +25,7 @@
   <include file="$(find rosbot_competition_bringup)/launch/competition_system.launch">
     <arg name="enable_slam" value="$(arg enable_slam)"/>
     <arg name="enable_move_base" value="$(arg enable_move_base)"/>
-    <arg name="use_slam_toolbox" value="true"/>
+    <arg name="use_slam_toolbox" value="$(arg use_slam_toolbox)"/>
     <arg name="enable_ir_safety" value="false"/>
     <arg name="enable_dashboard" value="$(arg enable_dashboard)"/>
     <arg name="enable_sim_manipulation" value="true"/>

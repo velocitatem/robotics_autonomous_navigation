@@ -14,5 +14,6 @@ catkin_package(
 catkin_install_python(
   PROGRAMS
     scripts/ir_safety_stop.py
+    scripts/laser_nav_safety.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )

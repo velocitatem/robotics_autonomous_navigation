@@ -273,8 +273,12 @@ class SafetyMonitor:
 
     def filter_twist(self, cmd):
         filtered = Twist()
-        filtered.linear.x = _clamp(cmd.linear.x, -self.max_safe_linear, self.max_safe_linear)
-        filtered.angular.z = _clamp(cmd.angular.z, -self.max_safe_angular, self.max_safe_angular)
+        filtered.linear.x = _clamp(
+            cmd.linear.x, -self.max_safe_linear, self.max_safe_linear
+        )
+        filtered.angular.z = _clamp(
+            cmd.angular.z, -self.max_safe_angular, self.max_safe_angular
+        )
 
         if filtered.linear.x > 0.0 and not self.can_drive_forward():
             filtered.linear.x = 0.0
@@ -312,7 +316,9 @@ class SafetyMonitor:
         return True
 
     def can_drive_backward(self):
-        rear = _scan_sector_min(mission_data.latest_scan, math.pi, self.sector_width_rad)
+        rear = _scan_sector_min(
+            mission_data.latest_scan, math.pi, self.sector_width_rad
+        )
         if rear is not None and rear <= self.rear_stop_m:
             return False
         if self.tf_buffer is not None:
@@ -410,7 +416,9 @@ def is_goal_safe(goal, safety_margin_m=0.20):
     gy = int((goal["y"] - grid.info.origin.position.y) / grid.info.resolution)
     if gx < 0 or gy < 0 or gx >= grid.info.width or gy >= grid.info.height:
         return False
-    data = np.array(grid.data, dtype=np.int16).reshape((grid.info.height, grid.info.width))
+    data = np.array(grid.data, dtype=np.int16).reshape(
+        (grid.info.height, grid.info.width)
+    )
     radius = max(1, int(math.ceil(safety_margin_m / max(grid.info.resolution, 1e-3))))
     x0, x1 = max(0, gx - radius), min(grid.info.width, gx + radius + 1)
     y0, y1 = max(0, gy - radius), min(grid.info.height, gy + radius + 1)
@@ -464,7 +472,10 @@ def servo_to_map_point(
         # close to an obstacle, fall back to the most open lidar sector.
         heading_error = target_heading_error
         target_clearance = _scan_sector_min(scan, target_heading_error, 0.35)
-        if target_clearance is not None and target_clearance < safety.front_stop_m + 0.05:
+        if (
+            target_clearance is not None
+            and target_clearance < safety.front_stop_m + 0.05
+        ):
             best_angle = _scan_best_open_direction(
                 scan, half_width=0.30, prefer_angle=target_heading_error
             )
@@ -484,26 +495,32 @@ def servo_to_map_point(
             blocked = (
                 forward_clear is not None
                 and forward_clear <= safety.front_stop_m + 0.04
-            ) or (
-                puck_clear is not None and puck_clear <= safety.puck_stop_m + 0.04
-            )
+            ) or (puck_clear is not None and puck_clear <= safety.puck_stop_m + 0.04)
             if not blocked:
                 cmd.linear.x = linear_speed * max(0.25, 1.0 - abs(heading_error))
 
-        if cmd.linear.x > 0.0 and last_distance is not None and distance >= last_distance - 0.01:
+        if (
+            cmd.linear.x > 0.0
+            and last_distance is not None
+            and distance >= last_distance - 0.01
+        ):
             stagnant_cycles += 1
         else:
             stagnant_cycles = 0
         last_distance = distance
         if stagnant_cycles >= 120:
             cmd_pub.publish(Twist())
-            publish_event(event_pub, f"[MISSION] Servo navigation to {label} made no progress.")
+            publish_event(
+                event_pub, f"[MISSION] Servo navigation to {label} made no progress."
+            )
             return False
 
         publish_safe_twist(cmd_pub, cmd, safety, event_pub, label)
         if (rospy.Time.now() - start).to_sec() >= timeout_sec:
             cmd_pub.publish(Twist())
-            publish_event(event_pub, f"[MISSION] Servo navigation to {label} timed out.")
+            publish_event(
+                event_pub, f"[MISSION] Servo navigation to {label} timed out."
+            )
             return False
         try:
             rate.sleep()
@@ -543,7 +560,8 @@ def servo_align_to_yaw(
         if (rospy.Time.now() - start).to_sec() >= timeout_sec:
             cmd_pub.publish(Twist())
             publish_event(
-                event_pub, f"[MISSION] Heading align for {label} timed out (yaw err ~{err:.2f} rad)."
+                event_pub,
+                f"[MISSION] Heading align for {label} timed out (yaw err ~{err:.2f} rad).",
             )
             return False
         cmd = Twist()
@@ -561,7 +579,9 @@ class OccupancyAnalyzer:
     def __init__(self):
         self.occupied_threshold = int(rospy.get_param("~bbox_occupied_threshold", 50))
         self.bbox_eps_m = float(rospy.get_param("~bbox_eps_m", 0.05))
-        self.bbox_min_perimeter_cells = int(rospy.get_param("~bbox_min_perimeter_cells", 60))
+        self.bbox_min_perimeter_cells = int(
+            rospy.get_param("~bbox_min_perimeter_cells", 60)
+        )
         self.bbox_min_free_cells = int(rospy.get_param("~bbox_min_free_cells", 40))
         self.frontier_min_unknown_neighbors = int(
             rospy.get_param("~frontier_min_unknown_neighbors", 1)
@@ -574,7 +594,9 @@ class OccupancyAnalyzer:
     def compute_bbox(self, grid):
         if grid is None or not grid.data:
             return None
-        data = np.array(grid.data, dtype=np.int16).reshape((grid.info.height, grid.info.width))
+        data = np.array(grid.data, dtype=np.int16).reshape(
+            (grid.info.height, grid.info.width)
+        )
         ys, xs = np.where(data > self.occupied_threshold)
         if xs.size < self.bbox_min_perimeter_cells:
             ys, xs = np.where(data == 0)
@@ -607,7 +629,9 @@ class OccupancyAnalyzer:
         if prev_bbox is None or new_bbox is None:
             return False
         keys = ("min_x", "min_y", "max_x", "max_y")
-        return all(abs(prev_bbox[key] - new_bbox[key]) <= self.bbox_eps_m for key in keys)
+        return all(
+            abs(prev_bbox[key] - new_bbox[key]) <= self.bbox_eps_m for key in keys
+        )
 
     def frontier_goal(self, grid, robot):
         if grid is None or robot is None:
@@ -621,7 +645,9 @@ class OccupancyAnalyzer:
             for x in range(1, width - 1):
                 if data[y, x] != 0:
                     continue
-                unknown_neighbors = np.count_nonzero(data[y - 1 : y + 2, x - 1 : x + 2] < 0)
+                unknown_neighbors = np.count_nonzero(
+                    data[y - 1 : y + 2, x - 1 : x + 2] < 0
+                )
                 if unknown_neighbors >= self.frontier_min_unknown_neighbors:
                     frontier_mask[y, x] = True
 
@@ -658,7 +684,12 @@ class OccupancyAnalyzer:
                 while stack:
                     cx, cy = stack.pop()
                     cluster.append((cx, cy))
-                    for nx, ny in ((cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)):
+                    for nx, ny in (
+                        (cx + 1, cy),
+                        (cx - 1, cy),
+                        (cx, cy + 1),
+                        (cx, cy - 1),
+                    ):
                         if nx < 0 or ny < 0 or nx >= width or ny >= height:
                             continue
                         if seen[ny, nx] or not mask[ny, nx]:
@@ -713,7 +744,9 @@ class ArenaModel:
 
     def nearest_corner(self, point):
         corners = self.corners()
-        distances = [math.hypot(point.x - corner.x, point.y - corner.y) for corner in corners]
+        distances = [
+            math.hypot(point.x - corner.x, point.y - corner.y) for corner in corners
+        ]
         return int(np.argmin(distances)), float(min(distances))
 
     def assign_color(self, color, point, max_distance_m):
@@ -828,7 +861,9 @@ def navigate_to_goal(
                 move_base.cancel_goal()
                 if "yaw" in goal:
                     ytol = float(rospy.get_param("~tag_vantage_yaw_tolerance_rad", 0.2))
-                    ytimeout = float(rospy.get_param("~tag_vantage_yaw_align_timeout_sec", 10.0))
+                    ytimeout = float(
+                        rospy.get_param("~tag_vantage_yaw_align_timeout_sec", 10.0)
+                    )
                     servo_align_to_yaw(
                         tf_buffer,
                         cmd_pub,
@@ -891,7 +926,9 @@ def navigate_to_goal(
             )
             if arrived and "yaw" in goal:
                 ytol = float(rospy.get_param("~tag_vantage_yaw_tolerance_rad", 0.2))
-                ytimeout = float(rospy.get_param("~tag_vantage_yaw_align_timeout_sec", 10.0))
+                ytimeout = float(
+                    rospy.get_param("~tag_vantage_yaw_align_timeout_sec", 10.0)
+                )
                 servo_align_to_yaw(
                     tf_buffer,
                     cmd_pub,
@@ -928,10 +965,16 @@ class InitScan(smach.State):
         self.move_base = actionlib.SimpleActionClient("move_base", MoveBaseAction)
         self.move_base_ready = self.move_base.wait_for_server(rospy.Duration(1.0))
         self.init_spin_yaw_speed = float(rospy.get_param("~init_spin_yaw_speed", 0.5))
-        self.init_spin_duration_sec = float(rospy.get_param("~init_spin_duration_sec", 13.0))
+        self.init_spin_duration_sec = float(
+            rospy.get_param("~init_spin_duration_sec", 13.0)
+        )
         self.init_max_attempts = int(rospy.get_param("~init_max_attempts", 3))
-        self.init_nudge_distance_m = float(rospy.get_param("~init_nudge_distance_m", 0.4))
-        self.goal_tolerance_m = float(rospy.get_param("~explore_goal_tolerance_m", 0.18))
+        self.init_nudge_distance_m = float(
+            rospy.get_param("~init_nudge_distance_m", 0.4)
+        )
+        self.goal_tolerance_m = float(
+            rospy.get_param("~explore_goal_tolerance_m", 0.18)
+        )
         self.servo_goal_linear_speed = float(
             rospy.get_param("~servo_goal_linear_speed", 0.08)
         )
@@ -954,15 +997,23 @@ class InitScan(smach.State):
                 bbox = self.analyzer.compute_points_bbox(mission_data.scan_points)
             if bbox is not None:
                 last_bbox = bbox
-                if self.analyzer.is_stable(previous_bbox, bbox) or attempt == self.init_max_attempts:
+                if (
+                    self.analyzer.is_stable(previous_bbox, bbox)
+                    or attempt == self.init_max_attempts
+                ):
                     mission_data.arena = ArenaModel(bbox)
                     robot = get_robot_pose(self.tf_buffer)
                     mission_data.initial_robot_pose = robot
                     mission_data.arena.set_start_corner(robot)
-                    publish_event(self.event_pub, "[MISSION] SLAM arena bounds initialized.")
+                    publish_event(
+                        self.event_pub, "[MISSION] SLAM arena bounds initialized."
+                    )
                     return "scan_done"
                 previous_bbox = bbox
-            publish_event(self.event_pub, "[MISSION] Arena bounds not stable yet; continuing rotation-only scan.")
+            publish_event(
+                self.event_pub,
+                "[MISSION] Arena bounds not stable yet; continuing rotation-only scan.",
+            )
 
         if last_bbox is not None:
             mission_data.arena = ArenaModel(last_bbox)
@@ -979,7 +1030,9 @@ class InitScan(smach.State):
         while not rospy.is_shutdown():
             if (rospy.Time.now() - start).to_sec() >= self.init_spin_duration_sec:
                 break
-            publish_safe_twist(self.cmd_pub, cmd, self.safety, self.event_pub, "init scan")
+            publish_safe_twist(
+                self.cmd_pub, cmd, self.safety, self.event_pub, "init scan"
+            )
             try:
                 rate.sleep()
             except rospy.ROSInterruptException:
@@ -1058,7 +1111,9 @@ class InitScan(smach.State):
 
 class DiscoverCorners(smach.State):
     def __init__(self, tf_buffer, event_pub, analyzer):
-        smach.State.__init__(self, outcomes=["tags_complete", "tags_missing", "need_scan"])
+        smach.State.__init__(
+            self, outcomes=["tags_complete", "tags_missing", "need_scan"]
+        )
         self.tf_buffer = tf_buffer
         self.event_pub = event_pub
         self.analyzer = analyzer
@@ -1076,7 +1131,9 @@ class DiscoverCorners(smach.State):
             if bbox is None:
                 bbox = self.analyzer.compute_points_bbox(mission_data.scan_points)
             if bbox is None:
-                publish_event(self.event_pub, "[MISSION] Arena bounds unavailable; rescanning.")
+                publish_event(
+                    self.event_pub, "[MISSION] Arena bounds unavailable; rescanning."
+                )
                 return "need_scan"
             mission_data.arena = ArenaModel(bbox)
             mission_data.arena.set_start_corner(get_robot_pose(self.tf_buffer))
@@ -1085,7 +1142,9 @@ class DiscoverCorners(smach.State):
             point = _memory_point(entry)
             if point is None:
                 continue
-            if mission_data.arena.assign_color(color, point, self.tag_corner_snap_distance_m):
+            if mission_data.arena.assign_color(
+                color, point, self.tag_corner_snap_distance_m
+            ):
                 corner_idx = mission_data.arena.color_to_corner[color]
                 mission_data.inspected_tag_corners.add(corner_idx)
                 publish_event(
@@ -1094,7 +1153,11 @@ class DiscoverCorners(smach.State):
                 )
 
         known = len(
-            [color for color in mission_data.target_order if color in mission_data.arena.color_to_corner]
+            [
+                color
+                for color in mission_data.target_order
+                if color in mission_data.arena.color_to_corner
+            ]
         )
         publish_event(
             self.event_pub,
@@ -1114,12 +1177,27 @@ class TagTour(smach.State):
         self.event_pub = event_pub
         self.cmd_pub = rospy.Publisher("/cmd_vel_servo", Twist, queue_size=1)
         self.safety = SafetyMonitor(self.tf_buffer)
-        self.corner_vantage_inset_m = float(rospy.get_param("~corner_vantage_inset_m", 0.55))
+        self.corner_vantage_inset_m = float(
+            rospy.get_param("~corner_vantage_inset_m", 0.55)
+        )
+        # Make corner vantages scale with the discovered arena size. A fixed
+        # metric inset can still hug walls when SLAM's early bbox is oversized.
+        self.corner_vantage_center_fraction = float(
+            rospy.get_param("~corner_vantage_center_fraction", 0.65)
+        )
+        self.tag_vantage_wall_margin_m = float(
+            rospy.get_param("~tag_vantage_wall_margin_m", 0.45)
+        )
+        self.tag_tour_use_move_base = bool(
+            rospy.get_param("~tag_tour_use_move_base", False)
+        )
         self.tag_tour_goal_timeout_sec = float(
             rospy.get_param("~tag_tour_goal_timeout_sec", 25.0)
         )
         self.tag_dwell_sec = float(rospy.get_param("~tag_dwell_sec", 1.5))
-        self.goal_tolerance_m = float(rospy.get_param("~explore_goal_tolerance_m", 0.18))
+        self.goal_tolerance_m = float(
+            rospy.get_param("~explore_goal_tolerance_m", 0.18)
+        )
         self.servo_goal_linear_speed = float(
             rospy.get_param("~servo_goal_linear_speed", 0.08)
         )
@@ -1130,41 +1208,114 @@ class TagTour(smach.State):
             rospy.get_param("~servo_goal_max_angular", 0.65)
         )
 
+    def _corner_goal(self, arena, corner_idx):
+        corner = arena.corners()[corner_idx]
+        center = arena.center()
+        corner_to_center = max(
+            math.hypot(center.x - corner.x, center.y - corner.y), 1e-3
+        )
+        adaptive_inset = max(
+            self.corner_vantage_inset_m,
+            self.corner_vantage_center_fraction * corner_to_center,
+        )
+        adaptive_inset = min(adaptive_inset, max(0.10, corner_to_center - 0.05))
+        goal = arena.vantage(corner_idx, adaptive_inset)
+
+        margin = max(0.0, self.tag_vantage_wall_margin_m)
+        x_lo = arena.bbox["min_x"] + margin
+        x_hi = arena.bbox["max_x"] - margin
+        y_lo = arena.bbox["min_y"] + margin
+        y_hi = arena.bbox["max_y"] - margin
+        if x_lo <= x_hi:
+            goal["x"] = _clamp(goal["x"], x_lo, x_hi)
+        if y_lo <= y_hi:
+            goal["y"] = _clamp(goal["y"], y_lo, y_hi)
+        goal["yaw"] = math.atan2(corner.y - goal["y"], corner.x - goal["x"])
+        return goal, adaptive_inset
+
     def execute(self, userdata):
         publish_event(self.event_pub, "[MISSION] State: TAG_TOUR")
         arena = mission_data.arena
         if arena is None:
             return "tour_progress"
         target_corners = [
-            idx for idx in arena.unmapped_corners() if idx not in mission_data.inspected_tag_corners
+            idx
+            for idx in arena.unmapped_corners()
+            if idx not in mission_data.inspected_tag_corners
         ]
         if not target_corners:
             mission_data.inspected_tag_corners.clear()
             target_corners = arena.unmapped_corners()
-        goals = [(idx, arena.vantage(idx, self.corner_vantage_inset_m)) for idx in target_corners]
+        goals = []
+        for idx in target_corners:
+            goal, inset = self._corner_goal(arena, idx)
+            goals.append((idx, goal, inset))
         robot = get_robot_pose(self.tf_buffer)
         if robot is not None:
-            goals.sort(key=lambda item: math.hypot(item[1]["x"] - robot.x, item[1]["y"] - robot.y))
+            goals.sort(
+                key=lambda item: math.hypot(
+                    item[1]["x"] - robot.x, item[1]["y"] - robot.y
+                )
+            )
 
-        for corner_idx, goal in goals:
+        for corner_idx, goal, inset in goals:
             if corner_idx not in arena.unmapped_corners():
                 continue
-            publish_event(self.event_pub, f"[MISSION] Visiting corner {corner_idx} to read tag.")
-            _arrived, self.move_base_ready = navigate_to_goal(
-                self.move_base,
-                self.move_base_ready,
-                self.tf_buffer,
-                self.cmd_pub,
+            nav_mode = "move_base" if self.tag_tour_use_move_base else "servo"
+            publish_event(
                 self.event_pub,
-                goal,
-                self.tag_tour_goal_timeout_sec,
-                self.goal_tolerance_m,
-                self.servo_goal_linear_speed,
-                self.servo_goal_angular_gain,
-                self.servo_goal_max_angular,
-                f"corner {corner_idx} tag vantage",
-                self.safety,
+                f"[MISSION] Visiting corner {corner_idx} to read tag "
+                f"(mode={nav_mode}, inset={inset:.2f} m, "
+                f"goal=({goal['x']:.2f}, {goal['y']:.2f})).",
             )
+            if self.tag_tour_use_move_base:
+                _arrived, self.move_base_ready = navigate_to_goal(
+                    self.move_base,
+                    self.move_base_ready,
+                    self.tf_buffer,
+                    self.cmd_pub,
+                    self.event_pub,
+                    goal,
+                    self.tag_tour_goal_timeout_sec,
+                    self.goal_tolerance_m,
+                    self.servo_goal_linear_speed,
+                    self.servo_goal_angular_gain,
+                    self.servo_goal_max_angular,
+                    f"corner {corner_idx} tag vantage",
+                    self.safety,
+                )
+            else:
+                _arrived = servo_to_map_point(
+                    self.tf_buffer,
+                    self.cmd_pub,
+                    self.event_pub,
+                    goal["x"],
+                    goal["y"],
+                    self.goal_tolerance_m,
+                    self.tag_tour_goal_timeout_sec,
+                    self.servo_goal_linear_speed,
+                    self.servo_goal_angular_gain,
+                    self.servo_goal_max_angular,
+                    f"corner {corner_idx} tag vantage",
+                    self.safety,
+                )
+                if _arrived:
+                    ytol = float(rospy.get_param("~tag_vantage_yaw_tolerance_rad", 0.2))
+                    ytimeout = float(
+                        rospy.get_param("~tag_vantage_yaw_align_timeout_sec", 10.0)
+                    )
+                    servo_align_to_yaw(
+                        self.tf_buffer,
+                        self.cmd_pub,
+                        self.event_pub,
+                        float(goal["yaw"]),
+                        ytimeout,
+                        self.servo_goal_angular_gain,
+                        self.servo_goal_max_angular,
+                        f"corner {corner_idx} tag vantage",
+                        self.safety,
+                        ytol,
+                    )
             try:
                 rospy.sleep(self.tag_dwell_sec)
             except rospy.ROSInterruptException:
@@ -1176,19 +1327,27 @@ class TagTour(smach.State):
 
 class LocatePuck(smach.State):
     def __init__(self, tf_buffer, event_pub):
-        smach.State.__init__(self, outcomes=["found_puck", "continue_search", "all_done"])
+        smach.State.__init__(
+            self, outcomes=["found_puck", "continue_search", "all_done"]
+        )
         self.move_base = actionlib.SimpleActionClient("move_base", MoveBaseAction)
         self.move_base_ready = self.move_base.wait_for_server(rospy.Duration(1.0))
         self.tf_buffer = tf_buffer
         self.event_pub = event_pub
         self.cmd_pub = rospy.Publisher("/cmd_vel_servo", Twist, queue_size=1)
         self.safety = SafetyMonitor(self.tf_buffer)
-        self.known_object_stale_sec = float(rospy.get_param("~known_object_stale_sec", 0.0))
+        self.known_object_stale_sec = float(
+            rospy.get_param("~known_object_stale_sec", 0.0)
+        )
         self.puck_search_quadrant_inset_m = float(
             rospy.get_param("~puck_search_quadrant_inset_m", 0.45)
         )
-        self.locate_goal_timeout_sec = float(rospy.get_param("~locate_goal_timeout_sec", 20.0))
-        self.goal_tolerance_m = float(rospy.get_param("~explore_goal_tolerance_m", 0.18))
+        self.locate_goal_timeout_sec = float(
+            rospy.get_param("~locate_goal_timeout_sec", 20.0)
+        )
+        self.goal_tolerance_m = float(
+            rospy.get_param("~explore_goal_tolerance_m", 0.18)
+        )
         self.servo_goal_linear_speed = float(
             rospy.get_param("~servo_goal_linear_speed", 0.08)
         )
@@ -1212,7 +1371,9 @@ class LocatePuck(smach.State):
         arena = mission_data.arena
         if arena is None:
             self._active_scan()
-            return "found_puck" if self._target_is_known(next_color) else "continue_search"
+            return (
+                "found_puck" if self._target_is_known(next_color) else "continue_search"
+            )
 
         goals = [
             (idx, arena.quadrant_goal(idx, self.puck_search_quadrant_inset_m))
@@ -1220,7 +1381,11 @@ class LocatePuck(smach.State):
         ]
         robot = get_robot_pose(self.tf_buffer)
         if robot is not None:
-            goals.sort(key=lambda item: math.hypot(item[1]["x"] - robot.x, item[1]["y"] - robot.y))
+            goals.sort(
+                key=lambda item: math.hypot(
+                    item[1]["x"] - robot.x, item[1]["y"] - robot.y
+                )
+            )
         if arena.start_corner_idx is not None:
             goals.sort(key=lambda item: item[0] == arena.start_corner_idx)
 
@@ -1270,7 +1435,9 @@ class LocatePuck(smach.State):
         for _ in range(iterations):
             if self._target_is_known(mission_data.current_target_color):
                 break
-            publish_safe_twist(self.cmd_pub, cmd, self.safety, self.event_pub, "puck search scan")
+            publish_safe_twist(
+                self.cmd_pub, cmd, self.safety, self.event_pub, "puck search scan"
+            )
             try:
                 rospy.sleep(0.1)
             except rospy.ROSInterruptException:
@@ -1288,7 +1455,9 @@ class Approach(smach.State):
         self.cmd_pub = rospy.Publisher("/cmd_vel_servo", Twist, queue_size=1)
         self.safety = SafetyMonitor(self.tf_buffer)
         self.approach_distance_m = float(rospy.get_param("~approach_distance_m", 0.30))
-        self.goal_tolerance_m = float(rospy.get_param("~approach_goal_tolerance_m", 0.18))
+        self.goal_tolerance_m = float(
+            rospy.get_param("~approach_goal_tolerance_m", 0.18)
+        )
         self.servo_goal_linear_speed = float(
             rospy.get_param("~servo_goal_linear_speed", 0.08)
         )
@@ -1387,11 +1556,15 @@ class VisualServo(smach.State):
             float(rospy.get_param("~visual_servo_timeout_sec", 12.0))
         )
         grasp_distance = float(rospy.get_param("~visual_servo_grasp_distance_m", 0.18))
-        align_tolerance = float(rospy.get_param("~visual_servo_align_tolerance_rad", 0.12))
+        align_tolerance = float(
+            rospy.get_param("~visual_servo_align_tolerance_rad", 0.12)
+        )
         align_gain = float(rospy.get_param("~visual_servo_align_gain", 1.4))
         max_angular = float(rospy.get_param("~visual_servo_max_angular", 0.7))
         forward_speed = float(rospy.get_param("~visual_servo_speed", 0.05))
-        blocked_grace_sec = float(rospy.get_param("~visual_servo_blocked_grace_sec", 1.5))
+        blocked_grace_sec = float(
+            rospy.get_param("~visual_servo_blocked_grace_sec", 1.5)
+        )
 
         # Snapshot the puck pose once at entry. The depth camera is mounted
         # high on the rosbot and tilts forward; a small ground puck typically
@@ -1483,9 +1656,7 @@ class VisualServo(smach.State):
                 )
             else:
                 cmd.linear.x = forward_speed
-                cmd.angular.z = _clamp(
-                    0.6 * heading_error, -max_angular, max_angular
-                )
+                cmd.angular.z = _clamp(0.6 * heading_error, -max_angular, max_angular)
 
             moved = publish_safe_twist(
                 self.cmd_pub, cmd, self.safety, self.event_pub, "visual servo"
@@ -1556,7 +1727,9 @@ class Grab(smach.State):
         cmd = Twist()
         cmd.linear.x = -float(rospy.get_param("~backup_speed", 0.08))
         for _ in range(15):
-            if not publish_safe_twist(cmd_pub, cmd, self.safety, self.event_pub, "miss backup"):
+            if not publish_safe_twist(
+                cmd_pub, cmd, self.safety, self.event_pub, "miss backup"
+            ):
                 break
             try:
                 rospy.sleep(0.1)
@@ -1582,7 +1755,9 @@ class Deliver(smach.State):
         # width (~0.13) = ~0.42 m before move_base will plan a path. Default a
         # bit further out and let retries push us closer if needed.
         self.dropoff_distance_m = float(rospy.get_param("~dropoff_distance_m", 0.55))
-        self.goal_tolerance_m = float(rospy.get_param("~deliver_goal_tolerance_m", 0.25))
+        self.goal_tolerance_m = float(
+            rospy.get_param("~deliver_goal_tolerance_m", 0.25)
+        )
         self.servo_goal_linear_speed = float(
             rospy.get_param("~servo_goal_linear_speed", 0.08)
         )
@@ -1614,7 +1789,9 @@ class Deliver(smach.State):
             self.dropoff_distance_m + 0.10,
             self.dropoff_distance_m + 0.20,
         ]
-        per_attempt_timeout = float(rospy.get_param("~deliver_attempt_timeout_sec", 35.0))
+        per_attempt_timeout = float(
+            rospy.get_param("~deliver_attempt_timeout_sec", 35.0)
+        )
 
         for attempt in range(max_retries):
             inset = retry_insets[min(attempt, len(retry_insets) - 1)]
@@ -1714,7 +1891,9 @@ class Deliver(smach.State):
         cmd = Twist()
         cmd.linear.x = -float(rospy.get_param("~backup_speed", 0.08))
         for _ in range(20):
-            if not publish_safe_twist(self.cmd_pub, cmd, self.safety, self.event_pub, "release backup"):
+            if not publish_safe_twist(
+                self.cmd_pub, cmd, self.safety, self.event_pub, "release backup"
+            ):
                 break
             try:
                 rospy.sleep(0.1)
@@ -1749,14 +1928,18 @@ def _on_scan(msg):
 
 def _wait_for_move_base(timeout_sec):
     client = actionlib.SimpleActionClient("move_base", MoveBaseAction)
-    rospy.loginfo("[MISSION] Waiting up to %.1fs for move_base action server...", timeout_sec)
+    rospy.loginfo(
+        "[MISSION] Waiting up to %.1fs for move_base action server...", timeout_sec
+    )
     deadline = rospy.Time.now() + rospy.Duration(timeout_sec)
     while not rospy.is_shutdown():
         if client.wait_for_server(rospy.Duration(2.0)):
             rospy.loginfo("[MISSION] move_base action server is up.")
             return True
         if rospy.Time.now() >= deadline:
-            rospy.logwarn("[MISSION] move_base did not come up in time; falling back to reactive servo.")
+            rospy.logwarn(
+                "[MISSION] move_base did not come up in time; falling back to reactive servo."
+            )
             return False
     return False
 
@@ -1786,7 +1969,10 @@ def _calibrate_laser_offset(tf_buffer, timeout_sec=10.0):
     """
     deadline = rospy.Time.now() + rospy.Duration(timeout_sec)
     laser_frame = "laser"
-    if mission_data.latest_scan is not None and mission_data.latest_scan.header.frame_id:
+    if (
+        mission_data.latest_scan is not None
+        and mission_data.latest_scan.header.frame_id
+    ):
         laser_frame = mission_data.latest_scan.header.frame_id
     while not rospy.is_shutdown() and rospy.Time.now() < deadline:
         try:
@@ -1801,7 +1987,9 @@ def _calibrate_laser_offset(tf_buffer, timeout_sec=10.0):
             mission_data.laser_yaw_offset = yaw
             rospy.loginfo(
                 "[MISSION] base_link -> %s yaw offset = %.3f rad (%.1f deg).",
-                laser_frame, yaw, math.degrees(yaw),
+                laser_frame,
+                yaw,
+                math.degrees(yaw),
             )
             return True
         except Exception:
@@ -1821,7 +2009,9 @@ def _calibrate_laser_offset(tf_buffer, timeout_sec=10.0):
 def main():
     rospy.init_node("mission_controller")
 
-    mission_data.target_order = rospy.get_param("~target_order", mission_data.target_order)
+    mission_data.target_order = rospy.get_param(
+        "~target_order", mission_data.target_order
+    )
 
     tf_buffer = tf2_ros.Buffer()
     tf_listener = tf2_ros.TransformListener(tf_buffer)
