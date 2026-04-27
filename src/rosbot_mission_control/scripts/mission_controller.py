@@ -2203,7 +2203,13 @@ def main():
 
     _wait_for_first_scan(float(rospy.get_param("~map_wait_sec", 30.0)))
     _calibrate_laser_offset(tf_buffer)
-    _wait_for_move_base(float(rospy.get_param("~move_base_wait_sec", 60.0)))
+    if not _wait_for_move_base(float(rospy.get_param("~move_base_wait_sec", 60.0))):
+        publish_event(
+            event_pub,
+            "[MISSION] ABORTED: move_base action server unavailable. "
+            "Fix navigation stack before running mission.",
+        )
+        return
 
     # Stream the floor-level pucks into move_base's costmap and the in-process
     # safety gate. Lidar at z~0.12 m never sees the 3 cm tall pucks, so without
