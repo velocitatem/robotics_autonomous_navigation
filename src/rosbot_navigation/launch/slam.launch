@@ -2,7 +2,7 @@
   <arg name="use_slam_toolbox" default="true"/>
 
   <group if="$(arg use_slam_toolbox)">
-    <node pkg="slam_toolbox" type="sync_slam_toolbox_node" name="slam_toolbox" output="screen">
+    <node pkg="slam_toolbox" type="async_slam_toolbox_node" name="slam_toolbox" output="screen">
       <param name="odom_frame" value="odom"/>
       <param name="map_frame" value="map"/>
       <param name="base_frame" value="base_link"/>
@@ -14,6 +14,13 @@
       <param name="map_update_interval" value="0.6"/>
       <param name="transform_publish_period" value="0.05"/>
       <param name="minimum_time_interval" value="0.08"/>
+      <!-- Make scan integration robust to distributed-network TF jitter and
+           ensure mapping starts from the first scans instead of waiting for
+           large motion before emitting /map. -->
+      <param name="transform_timeout" value="0.5"/>
+      <param name="tf_buffer_duration" value="30.0"/>
+      <param name="minimum_travel_distance" value="0.0"/>
+      <param name="minimum_travel_heading" value="0.0"/>
     </node>
 
     <!-- move_base static_layer expects /static_map service, while
