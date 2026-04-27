@@ -10,6 +10,9 @@
       <param name="mode" value="mapping"/>
       <param name="resolution" value="0.05"/>
       <param name="publish_map" value="true"/>
+      <param name="map_update_interval" value="0.6"/>
+      <param name="transform_publish_period" value="0.05"/>
+      <param name="minimum_time_interval" value="0.08"/>
     </node>
   </group>
 

@@ -4,16 +4,16 @@ DWAPlannerROS:
   # reports "failed to produce path" inside the arena.
   # Slightly lower forward cap on hardware so impacts (if any) are gentler; raise
   # if maps are good and the robot is timid in open areas.
-  max_vel_x: 0.16
-  min_vel_x: -0.10
+  max_vel_x: 0.12
+  min_vel_x: -0.07
   max_vel_y: 0.0
   min_vel_y: 0.0
   # Total planar speed window. min_vel_trans must be strictly less than
   # max_vel_trans, otherwise DWA rejects all samples. Zero allows in-place
   # rotation; in-place rotation is gated below by min_in_place_vel_theta.
-  max_vel_trans: 0.16
+  max_vel_trans: 0.12
   min_vel_trans: 0.0
-  trans_stopped_vel: 0.04
+  trans_stopped_vel: 0.03
 
   # Symmetric rotation envelope. Setting min_vel_theta > 0 forbids rotating
   # in the negative direction, which kept the robot from turning to the right
@@ -23,31 +23,31 @@ DWAPlannerROS:
   min_in_place_vel_theta: 0.4
   theta_stopped_vel: 0.1
 
-  acc_lim_x: 1.5
+  acc_lim_x: 1.0
   acc_lim_y: 0.0
-  acc_lim_theta: 2.0
+  acc_lim_theta: 1.6
 
-  xy_goal_tolerance: 0.15
+  xy_goal_tolerance: 0.18
   yaw_goal_tolerance: 0.30
   latch_xy_goal_tolerance: false
 
-  sim_time: 1.5
+  sim_time: 1.3
   sim_granularity: 0.025
-  vx_samples: 12
-  vtheta_samples: 20
+  vx_samples: 10
+  vtheta_samples: 24
 
   path_distance_bias: 24.0
   goal_distance_bias: 18.0
   # How strongly to stay away from obstacles in the costmap. Trade off with
   # corner goals: very high values + wide inflation make narrow corner vantages
   # unreachable (oscillation / no plan).
-  occdist_scale: 0.30
+  occdist_scale: 0.45
 
   # Look a bit further along the path when scoring trajectories near obstacles.
-  forward_point_distance: 0.14
+  forward_point_distance: 0.10
 
-  scaling_speed: 0.10
-  max_scaling_factor: 0.20
+  scaling_speed: 0.08
+  max_scaling_factor: 0.30
 
   # Required for ROS Noetic/Melodic differential robots.
   holonomic_robot: false

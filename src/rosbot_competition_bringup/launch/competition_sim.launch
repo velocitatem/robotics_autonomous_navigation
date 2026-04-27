@@ -1,6 +1,6 @@
 <launch>
   <arg name="gui" default="true"/>
-  <arg name="enable_dashboard" default="true"/>
+  <arg name="enable_dashboard" default="false"/>
   <arg name="enable_slam" default="true"/>
   <arg name="enable_move_base" default="true"/>
   <!-- Scenario overrides for randomised robustness runs. Defaults match the

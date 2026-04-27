@@ -19,6 +19,7 @@ class HSVCalibrator:
             "/camera/color/image_raw", Image, self.image_callback
         )
         self.latest_image = None
+        self.crop_top_fraction = float(rospy.get_param("~crop_top_fraction", 0.20))
 
         cv2.namedWindow("HSV Calibration")
         cv2.createTrackbar("HMin", "HSV Calibration", 0, 179, nothing)
@@ -41,6 +42,10 @@ class HSVCalibrator:
         while not rospy.is_shutdown():
             if self.latest_image is not None:
                 frame = self.latest_image.copy()
+                h = frame.shape[0]
+                crop_top = min(h - 1, int(round(h * self.crop_top_fraction)))
+                if crop_top > 0:
+                    frame = frame[crop_top:, :]
                 hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
                 h_min = cv2.getTrackbarPos("HMin", "HSV Calibration")

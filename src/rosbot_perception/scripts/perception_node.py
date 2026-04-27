@@ -41,6 +41,8 @@ class PerceptionNode:
         self.min_publish_distance_m = float(
             rospy.get_param("~min_publish_distance_m", 0.05)
         )
+        # Remove noisy sky/ceiling band: CV + ArUco run on the image below this strip.
+        self.crop_top_fraction = float(rospy.get_param("~crop_top_fraction", 0.20))
 
         self.hsv_ranges = rospy.get_param("~hsv_ranges", {})
         aruco_cfg = rospy.get_param("~aruco", {})
@@ -129,6 +131,12 @@ class PerceptionNode:
         if depth_m is None:
             return
 
+        h = bgr.shape[0]
+        crop_top = min(h - 1, int(round(h * self.crop_top_fraction)))
+        if crop_top > 0:
+            bgr = bgr[crop_top:, :]
+            depth_m = depth_m[crop_top:, :]
+
         overlay = bgr.copy()
         timestamp = color_msg.header.stamp
         camera_frame = (
@@ -149,6 +157,7 @@ class PerceptionNode:
                 marker_id=-1,
                 u=candidate["u"],
                 v=candidate["v"],
+                crop_top_px=crop_top,
                 confidence=candidate["confidence"],
             )
 
@@ -164,6 +173,7 @@ class PerceptionNode:
                 marker_id=candidate["marker_id"],
                 u=candidate["u"],
                 v=candidate["v"],
+                crop_top_px=crop_top,
                 confidence=1.0,
             )
 
@@ -297,13 +307,16 @@ class PerceptionNode:
         marker_id,
         u,
         v,
+        crop_top_px,
         confidence,
     ):
         z = self._sample_depth(depth_m, u, v)
         if z is None:
             return
 
-        ray = self.camera_model.projectPixelTo3dRay((u, v))
+        u_full = u
+        v_full = v + int(crop_top_px)
+        ray = self.camera_model.projectPixelTo3dRay((u_full, v_full))
         ray_z = ray[2]
         x = ray[0] * (z / ray_z)
         y = ray[1] * (z / ray_z)

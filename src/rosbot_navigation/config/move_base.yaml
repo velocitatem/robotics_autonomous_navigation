@@ -1,13 +1,18 @@
 shutdown_costmaps: false
 base_global_planner: navfn/NavfnROS
 base_local_planner: dwa_local_planner/DWAPlannerROS
-controller_frequency: 10.0
+controller_frequency: 8.0
 planner_frequency: 1.5
-planner_patience: 2.5
-controller_patience: 2.0
+planner_patience: 3.5
+controller_patience: 3.0
 conservative_reset_dist: 0.6
-oscillation_timeout: 4.0
-oscillation_distance: 0.15
+oscillation_timeout: 6.0
+oscillation_distance: 0.20
+# Keep transform tolerance explicitly mirrored here. In some launch/override
+# combinations nested costmap params can be shadowed, and move_base then runs
+# with a much tighter default tolerance that causes pose lookup lockouts.
+global_costmap/transform_tolerance: 2.0
+local_costmap/transform_tolerance: 2.0
 # Limit recovery to a single conservative costmap clear. Without this,
 # move_base burns ~90 s through rotate-recovery cycles before aborting,
 # which made delivery look frozen. With one quick clear the action server

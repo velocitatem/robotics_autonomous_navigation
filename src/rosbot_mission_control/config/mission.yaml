@@ -24,7 +24,7 @@ frontier_min_unknown_neighbors: 1
 frontier_cluster_min_cells: 4
 goal_clearance_cells: 2
 explore_goal_timeout_sec: 18.0
-explore_goal_tolerance_m: 0.18
+explore_goal_tolerance_m: 0.20
 explore_retry_limit: 2
 active_scan_yaw_speed: 0.45
 active_scan_duration_sec: 5.0
@@ -40,10 +40,10 @@ bbox_eps_m: 0.05
 bbox_min_perimeter_cells: 60
 bbox_min_free_cells: 40
 
-tag_corner_snap_distance_m: 0.55
+tag_corner_snap_distance_m: 0.70
 # Stand well inside the arena toward center so move_base/servo are not trying to
 # park inside the corner pocket (oscillation / no plan with inflated walls).
-corner_vantage_inset_m: 1.12
+corner_vantage_inset_m: 1.35
 tag_tour_goal_timeout_sec: 45.0
 tag_vantage_yaw_align_timeout_sec: 12.0
 tag_vantage_yaw_tolerance_rad: 0.18
@@ -51,7 +51,7 @@ tag_dwell_sec: 1.5
 puck_search_quadrant_inset_m: 0.50
 locate_goal_timeout_sec: 25.0
 
-servo_goal_linear_speed: 0.12
+servo_goal_linear_speed: 0.10
 servo_goal_angular_gain: 1.4
 servo_goal_max_angular: 0.8
 
@@ -63,13 +63,13 @@ visual_servo_align_gain: 1.4
 visual_servo_max_angular: 0.7
 visual_servo_blocked_grace_sec: 1.5
 
-front_stop_m: 0.22
-rear_stop_m: 0.20
-side_stop_m: 0.12
+front_stop_m: 0.26
+rear_stop_m: 0.22
+side_stop_m: 0.14
 safety_sector_width_rad: 0.40
-max_safe_linear_speed: 0.18
+max_safe_linear_speed: 0.14
 max_safe_angular_speed: 0.9
-safe_goal_margin_m: 0.20
+safe_goal_margin_m: 0.30
 # Non-target pucks are below the lidar plane; we publish them to the costmap
 # and gate cmd_vel. These tune how close the base may get to a *known* other
 # puck (not the approach target, not the colour in the gripper).
