@@ -22,6 +22,8 @@
     <node pkg="rosbot_navigation" type="static_map_proxy.py" name="static_map_proxy" output="screen">
       <param name="service_name" value="/static_map"/>
       <param name="target_service" value="/slam_toolbox/dynamic_map"/>
+      <param name="map_topic" value="/map"/>
+      <param name="use_target_service" value="false"/>
     </node>
   </group>
 

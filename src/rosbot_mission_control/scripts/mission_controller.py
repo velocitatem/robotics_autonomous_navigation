@@ -6,7 +6,9 @@ import smach
 import smach_ros
 import tf2_ros
 import math
+import time
 import numpy as np
+from actionlib_msgs.msg import GoalStatusArray
 from geometry_msgs.msg import Twist, Point, PoseStamped
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from nav_msgs.msg import OccupancyGrid
@@ -2105,12 +2107,20 @@ def _wait_for_move_base(timeout_sec):
     rospy.loginfo(
         "[MISSION] Waiting up to %.1fs for move_base action server...", timeout_sec
     )
-    deadline = rospy.Time.now() + rospy.Duration(timeout_sec)
+    deadline = time.monotonic() + timeout_sec
     while not rospy.is_shutdown():
-        if client.wait_for_server(rospy.Duration(2.0)):
+        if client.wait_for_server(rospy.Duration(1.5)):
             rospy.loginfo("[MISSION] move_base action server is up.")
             return True
-        if rospy.Time.now() >= deadline:
+        try:
+            rospy.wait_for_message("/move_base/status", GoalStatusArray, timeout=0.8)
+            rospy.logwarn(
+                "[MISSION] move_base status topic is live; proceeding with navigation."
+            )
+            return True
+        except rospy.ROSException:
+            pass
+        if time.monotonic() >= deadline:
             rospy.logwarn(
                 "[MISSION] move_base did not come up in time; falling back to reactive servo."
             )
@@ -2130,6 +2140,28 @@ def _wait_for_first_scan(timeout_sec):
         except rospy.ROSInterruptException:
             return False
     rospy.logwarn("[MISSION] No lidar scans received before timeout.")
+    return False
+
+
+def _wait_for_valid_map(timeout_sec):
+    rospy.loginfo("[MISSION] Waiting up to %.1fs for a valid /map...", timeout_sec)
+    deadline = time.monotonic() + timeout_sec
+    rate = rospy.Rate(5)
+    while not rospy.is_shutdown() and time.monotonic() < deadline:
+        m = mission_data.latest_map
+        if m is not None and m.info.width > 0 and m.info.height > 0:
+            rospy.loginfo(
+                "[MISSION] Map stream is live (%d x %d @ %.3f m/cell).",
+                m.info.width,
+                m.info.height,
+                m.info.resolution,
+            )
+            return True
+        try:
+            rate.sleep()
+        except rospy.ROSInterruptException:
+            return False
+    rospy.logwarn("[MISSION] No valid /map received before timeout.")
     return False
 
 
@@ -2203,6 +2235,13 @@ def main():
 
     _wait_for_first_scan(float(rospy.get_param("~map_wait_sec", 30.0)))
     _calibrate_laser_offset(tf_buffer)
+    if not _wait_for_valid_map(float(rospy.get_param("~map_wait_sec", 30.0))):
+        publish_event(
+            event_pub,
+            "[MISSION] ABORTED: no valid /map received. "
+            "Fix SLAM/TF before running mission.",
+        )
+        return
     if not _wait_for_move_base(float(rospy.get_param("~move_base_wait_sec", 60.0))):
         publish_event(
             event_pub,
