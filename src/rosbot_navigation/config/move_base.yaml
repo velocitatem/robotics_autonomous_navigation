@@ -18,7 +18,7 @@ local_costmap/transform_tolerance: 3.5
 # which made delivery look frozen. With one quick clear the action server
 # ABORTs within ~10-15 s and the mission's servo fallback takes over.
 recovery_behavior_enabled: true
-clearing_rotation_allowed: false
+clearing_rotation_allowed: true
 recovery_behaviors:
   - name: 'conservative_clear'
     type: 'clear_costmap_recovery/ClearCostmapRecovery'

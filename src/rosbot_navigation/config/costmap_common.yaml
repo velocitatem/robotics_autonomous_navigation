@@ -1,5 +1,5 @@
 footprint: [[-0.13, -0.13], [-0.13, 0.13], [0.16, 0.13], [0.16, -0.13]]
-robot_radius: 0.14
+robot_radius: 0.20
 
 obstacle_layer:
   enabled: true
@@ -25,7 +25,7 @@ obstacle_layer:
     data_type: PointCloud2
     topic: /puck_obstacles
     marking: true
-    clearing: false
+    clearing: true
     expected_update_rate: 0.0
     observation_persistence: 0.4
     obstacle_range: 3.0

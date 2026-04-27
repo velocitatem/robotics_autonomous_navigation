@@ -328,27 +328,15 @@ class PerceptionNode:
         source.point = Point(x=x, y=y, z=z)
 
         try:
+            self.tf_buffer.lookup_transform(
+                self.map_frame, camera_frame, stamp, rospy.Duration(0.07)
+            )
             map_point = self.tf_buffer.transform(
                 source, self.map_frame, rospy.Duration(0.07)
             )
-        except tf2_ros.ExtrapolationException:
-            source.header.stamp = rospy.Time(0)
-            try:
-                map_point = self.tf_buffer.transform(
-                    source, self.map_frame, rospy.Duration(0.07)
-                )
-                rospy.logwarn_throttle(
-                    2.0,
-                    "[VISION] Camera/TF timestamps are out of sync; using latest TF for projection.",
-                )
-            except (
-                tf2_ros.LookupException,
-                tf2_ros.ExtrapolationException,
-                tf2_ros.ConnectivityException,
-            ):
-                return
         except (
             tf2_ros.LookupException,
+            tf2_ros.ExtrapolationException,
             tf2_ros.ConnectivityException,
         ):
             return

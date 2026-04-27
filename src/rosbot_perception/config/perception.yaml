@@ -1,5 +1,5 @@
 map_frame: map
-camera_frame: ""
+camera_frame: camera_color_optical_frame
 
 color_topic: /camera/color/image_raw
 depth_topic: /camera/depth/image_raw
