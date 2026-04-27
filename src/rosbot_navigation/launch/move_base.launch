@@ -1,5 +1,6 @@
 <launch>
   <arg name="enable_laser_nav_safety" default="true"/>
+  <arg name="map_service" default="/static_map"/>
   <rosparam command="load" file="$(find rosbot_navigation)/config/costmap_common.yaml" ns="move_base/global_costmap"/>
   <rosparam command="load" file="$(find rosbot_navigation)/config/costmap_common.yaml" ns="move_base/local_costmap"/>
   <rosparam command="load" file="$(find rosbot_navigation)/config/global_costmap.yaml" ns="move_base"/>
@@ -10,6 +11,7 @@
   <group if="$(arg enable_laser_nav_safety)">
     <node pkg="move_base" type="move_base" name="move_base" output="screen" clear_params="false">
       <remap from="cmd_vel" to="/cmd_vel_nav_unsafe"/>
+      <remap from="static_map" to="$(arg map_service)"/>
     </node>
     <node pkg="rosbot_navigation" type="laser_nav_safety.py" name="laser_nav_safety" output="screen"/>
   </group>
@@ -17,6 +19,7 @@
   <group unless="$(arg enable_laser_nav_safety)">
     <node pkg="move_base" type="move_base" name="move_base" output="screen" clear_params="false">
       <remap from="cmd_vel" to="/cmd_vel_nav"/>
+      <remap from="static_map" to="$(arg map_service)"/>
     </node>
   </group>
 </launch>
