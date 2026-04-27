@@ -8,6 +8,7 @@ approach_distance_m: 0.30
 dropoff_distance_m: 0.40
 approach_goal_tolerance_m: 0.18
 deliver_goal_tolerance_m: 0.20
+drop_zone_frame_timeout_sec: 0.15
 
 navigation_timeout_sec: 45.0
 pickup_retry_limit: 2
@@ -34,6 +35,9 @@ init_spin_yaw_speed: 0.6
 init_spin_duration_sec: 12.0
 init_max_attempts: 4
 init_nudge_distance_m: 0.4
+visual_init_scan_yaw_speed: 0.35
+visual_init_scan_duration_sec: 22.0
+visual_init_scan_min_duration_sec: 6.0
 
 bbox_occupied_threshold: 50
 bbox_eps_m: 0.05

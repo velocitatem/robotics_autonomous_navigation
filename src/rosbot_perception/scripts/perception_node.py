@@ -7,12 +7,13 @@ import message_filters
 import numpy as np
 import rospy
 import tf2_ros
+import tf.transformations as tft
 
 # Importing from tf2_geometry_msgs registers PointStamped/PoseStamped
 # converters with tf2_ros as an import side-effect.
 from tf2_geometry_msgs import do_transform_point
 from cv_bridge import CvBridge, CvBridgeError
-from geometry_msgs.msg import Point, PointStamped
+from geometry_msgs.msg import Point, PointStamped, TransformStamped
 from rosbot_competition_msgs.msg import SpatialDetection, MissionEvent
 from sensor_msgs.msg import CameraInfo, Image
 from image_geometry import PinholeCameraModel
@@ -49,12 +50,20 @@ class PerceptionNode:
 
         self.hsv_ranges = rospy.get_param("~hsv_ranges", {})
         aruco_cfg = rospy.get_param("~aruco", {})
+        self.marker_size_m = float(aruco_cfg.get("marker_size_m", 0.25))
         self.marker_color_map = {
             int(marker_id): color
             for marker_id, color in aruco_cfg.get(
                 "marker_color_map", {1: "red", 2: "green", 3: "blue"}
             ).items()
         }
+
+        self.object_tf_publish_rate_hz = float(
+            rospy.get_param("~object_tf_publish_rate_hz", 12.0)
+        )
+        self.object_tf_max_age_sec = float(
+            rospy.get_param("~object_tf_max_age_sec", 4.0)
+        )
 
         dictionary_name = aruco_cfg.get("dictionary", "DICT_4X4_50")
         self.aruco, self.aruco_dict, self.aruco_detector = self._build_aruco_detector(
@@ -65,8 +74,13 @@ class PerceptionNode:
         self.fy = None
         self.cx = None
         self.cy = None
+        self.camera_matrix = None
+        self.dist_coeffs = None
 
         self.last_detection = {}
+        self.object_frames = {}
+
+        self.object_tf_broadcaster = tf2_ros.TransformBroadcaster()
 
         self.det_pub = rospy.Publisher(
             "/perception/spatial_detections", SpatialDetection, queue_size=30
@@ -87,6 +101,11 @@ class PerceptionNode:
             [self.color_sub, self.depth_sub], queue_size=10, slop=0.08
         )
         self.sync.registerCallback(self._on_image_pair)
+
+        period = max(1.0 / max(self.object_tf_publish_rate_hz, 1e-3), 0.05)
+        self.tf_timer = rospy.Timer(
+            rospy.Duration(period), self._broadcast_object_frames
+        )
 
         rospy.loginfo("[VISION] Perception node online")
 
@@ -112,6 +131,8 @@ class PerceptionNode:
         self.fy = msg.K[4]
         self.cx = msg.K[2]
         self.cy = msg.K[5]
+        self.camera_matrix = np.array(msg.K, dtype=np.float64).reshape(3, 3)
+        self.dist_coeffs = np.array(msg.D, dtype=np.float64).reshape(-1, 1)
         if self.camera_info_sub is not None:
             self.camera_info_sub.unregister()
             self.camera_info_sub = None
@@ -164,7 +185,7 @@ class PerceptionNode:
                 confidence=candidate["confidence"],
             )
 
-        drop_zone_candidates = self._detect_markers(overlay)
+        drop_zone_candidates = self._detect_markers(overlay, crop_top)
         for candidate in drop_zone_candidates:
             self._publish_spatial_detection(
                 overlay=overlay,
@@ -178,6 +199,7 @@ class PerceptionNode:
                 v=candidate["v"],
                 crop_top_px=crop_top,
                 confidence=1.0,
+                marker_corners_full=candidate["corners_full"],
             )
 
         try:
@@ -258,7 +280,7 @@ class PerceptionNode:
 
         return detections
 
-    def _detect_markers(self, overlay):
+    def _detect_markers(self, overlay, crop_top_px):
         detections = []
         if self.aruco is None or self.aruco_dict is None:
             return detections
@@ -279,6 +301,8 @@ class PerceptionNode:
         self.aruco.drawDetectedMarkers(overlay, corners, ids)
         for idx, marker_id in enumerate(ids.flatten()):
             pts = corners[idx][0]
+            pts_full = pts.copy()
+            pts_full[:, 1] += float(crop_top_px)
             center = np.mean(pts, axis=0)
             u = int(center[0])
             v = int(center[1])
@@ -294,7 +318,13 @@ class PerceptionNode:
                 cv2.LINE_AA,
             )
             detections.append(
-                {"marker_id": int(marker_id), "color": color, "u": u, "v": v}
+                {
+                    "marker_id": int(marker_id),
+                    "color": color,
+                    "u": u,
+                    "v": v,
+                    "corners_full": pts_full.astype(np.float32),
+                }
             )
 
         return detections
@@ -312,29 +342,13 @@ class PerceptionNode:
         v,
         crop_top_px,
         confidence,
+        marker_corners_full=None,
     ):
-        z = self._sample_depth(depth_m, u, v)
-        if z is None:
-            return
-
-        u_full = u
-        v_full = v + int(crop_top_px)
-        ray = self.camera_model.projectPixelTo3dRay((u_full, v_full))
-        ray_z = ray[2]
-        x = ray[0] * (z / ray_z)
-        y = ray[1] * (z / ray_z)
-
-        source = PointStamped()
-        source.header.stamp = stamp
-        source.header.frame_id = camera_frame
-        source.point = Point(x=x, y=y, z=z)
-
         try:
             tf_timeout = rospy.Duration(self.tf_lookup_timeout_sec)
             transform = self.tf_buffer.lookup_transform(
                 self.map_frame, camera_frame, stamp, tf_timeout
             )
-            map_point = do_transform_point(source, transform)
         except tf2_ros.ExtrapolationException:
             # Intentional: do not fall back to Time(0), because latest-TF
             # projection while turning/skidding can mis-map puck/tag positions.
@@ -357,8 +371,44 @@ class PerceptionNode:
             )
             return
 
+        map_point = None
+        map_quat = (0.0, 0.0, 0.0, 1.0)
+        depth_value = None
+
+        if object_class == "drop_zone" and marker_corners_full is not None:
+            marker_pose = self._estimate_marker_pose(marker_corners_full)
+            if marker_pose is not None:
+                rvec, tvec = marker_pose
+                map_point, map_quat = self._marker_pose_to_map(
+                    stamp, camera_frame, transform, rvec, tvec
+                )
+                depth_value = float(np.linalg.norm(tvec))
+
+        if map_point is None:
+            z = self._sample_depth(depth_m, u, v)
+            if z is None:
+                return
+
+            u_full = u
+            v_full = v + int(crop_top_px)
+            ray = self.camera_model.projectPixelTo3dRay((u_full, v_full))
+            ray_z = ray[2]
+            x = ray[0] * (z / ray_z)
+            y = ray[1] * (z / ray_z)
+
+            source = PointStamped()
+            source.header.stamp = stamp
+            source.header.frame_id = camera_frame
+            source.point = Point(x=x, y=y, z=z)
+            map_point = do_transform_point(source, transform).point
+            depth_value = float(z)
+
+        child_frame = self._object_frame_name(object_class, color, marker_id)
+        if child_frame:
+            self._upsert_object_frame(child_frame, map_point, map_quat, stamp)
+
         key = f"{object_class}:{color}:{marker_id}"
-        if not self._should_publish(key, map_point.point, stamp):
+        if not self._should_publish(key, map_point, stamp):
             return
 
         msg = SpatialDetection()
@@ -367,8 +417,8 @@ class PerceptionNode:
         msg.object_class = object_class
         msg.color = color
         msg.marker_id = marker_id
-        msg.map_point = map_point.point
-        msg.depth_m = float(z)
+        msg.map_point = map_point
+        msg.depth_m = float(depth_value)
         msg.confidence = float(confidence)
         self.det_pub.publish(msg)
 
@@ -376,8 +426,127 @@ class PerceptionNode:
 
         event_msg = MissionEvent()
         event_msg.level = "INFO"
-        event_msg.message = f"[VISION] Mapped {color} {object_class} at ({map_point.point.x:.2f}, {map_point.point.y:.2f})"
+        event_msg.message = f"[VISION] Mapped {color} {object_class} at ({map_point.x:.2f}, {map_point.y:.2f})"
         self.event_pub.publish(event_msg)
+
+    def _object_frame_name(self, object_class, color, marker_id):
+        safe_color = str(color).strip().lower()
+        if object_class == "puck" and safe_color:
+            return f"puck_{safe_color}_frame"
+        if object_class == "drop_zone":
+            if safe_color and safe_color != "unknown":
+                return f"drop_zone_{safe_color}_frame"
+            if int(marker_id) >= 0:
+                return f"drop_zone_marker_{int(marker_id)}_frame"
+        return ""
+
+    def _upsert_object_frame(self, child_frame, map_point, quat_xyzw, stamp):
+        self.object_frames[child_frame] = {
+            "stamp": stamp,
+            "point": Point(
+                x=float(map_point.x), y=float(map_point.y), z=float(map_point.z)
+            ),
+            "quat": (
+                float(quat_xyzw[0]),
+                float(quat_xyzw[1]),
+                float(quat_xyzw[2]),
+                float(quat_xyzw[3]),
+            ),
+        }
+
+    def _broadcast_object_frames(self, _event):
+        now = rospy.Time.now()
+        transforms = []
+        stale = []
+        for child_frame, data in list(self.object_frames.items()):
+            if (
+                self.object_tf_max_age_sec > 0.0
+                and (now - data["stamp"]).to_sec() > self.object_tf_max_age_sec
+            ):
+                stale.append(child_frame)
+                continue
+
+            tf_msg = TransformStamped()
+            tf_msg.header.stamp = now
+            tf_msg.header.frame_id = self.map_frame
+            tf_msg.child_frame_id = child_frame
+            tf_msg.transform.translation.x = data["point"].x
+            tf_msg.transform.translation.y = data["point"].y
+            tf_msg.transform.translation.z = data["point"].z
+            qx, qy, qz, qw = data["quat"]
+            tf_msg.transform.rotation.x = qx
+            tf_msg.transform.rotation.y = qy
+            tf_msg.transform.rotation.z = qz
+            tf_msg.transform.rotation.w = qw
+            transforms.append(tf_msg)
+
+        for child_frame in stale:
+            self.object_frames.pop(child_frame, None)
+
+        if transforms:
+            self.object_tf_broadcaster.sendTransform(transforms)
+
+    def _estimate_marker_pose(self, marker_corners_full):
+        if (
+            self.aruco is None
+            or self.camera_matrix is None
+            or self.dist_coeffs is None
+            or self.marker_size_m <= 0.0
+            or not hasattr(self.aruco, "estimatePoseSingleMarkers")
+        ):
+            return None
+
+        corners = np.asarray(marker_corners_full, dtype=np.float32).reshape(1, 4, 2)
+        result = self.aruco.estimatePoseSingleMarkers(
+            corners,
+            self.marker_size_m,
+            self.camera_matrix,
+            self.dist_coeffs,
+        )
+        if result is None:
+            return None
+
+        if len(result) == 3:
+            rvecs, tvecs, _obj_points = result
+        elif len(result) == 2:
+            rvecs, tvecs = result
+        else:
+            return None
+        if rvecs is None or tvecs is None or len(rvecs) == 0 or len(tvecs) == 0:
+            return None
+        return (
+            np.asarray(rvecs[0], dtype=np.float64).reshape(3, 1),
+            np.asarray(tvecs[0], dtype=np.float64).reshape(3),
+        )
+
+    def _marker_pose_to_map(self, stamp, camera_frame, map_from_camera, rvec, tvec):
+        marker_point = PointStamped()
+        marker_point.header.stamp = stamp
+        marker_point.header.frame_id = camera_frame
+        marker_point.point = Point(x=float(tvec[0]), y=float(tvec[1]), z=float(tvec[2]))
+        map_point = do_transform_point(marker_point, map_from_camera).point
+
+        rot_cam_marker, _ = cv2.Rodrigues(rvec)
+        mat = np.eye(4, dtype=np.float64)
+        mat[:3, :3] = rot_cam_marker
+        q_cam_marker = tft.quaternion_from_matrix(mat)
+
+        q_map_camera = (
+            map_from_camera.transform.rotation.x,
+            map_from_camera.transform.rotation.y,
+            map_from_camera.transform.rotation.z,
+            map_from_camera.transform.rotation.w,
+        )
+        q_map_marker = np.asarray(
+            tft.quaternion_multiply(q_map_camera, q_cam_marker), dtype=np.float64
+        )
+        norm = np.linalg.norm(q_map_marker)
+        if norm > 1e-8:
+            q_map_marker /= norm
+        else:
+            q_map_marker[:] = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float64)
+
+        return map_point, tuple(float(v) for v in q_map_marker)
 
     def _should_publish(self, key, current_point, stamp):
         previous = self.last_detection.get(key)

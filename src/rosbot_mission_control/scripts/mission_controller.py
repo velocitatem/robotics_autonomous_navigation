@@ -79,6 +79,45 @@ def _goal_key(x, y, resolution=0.10):
     return (round(float(x) / resolution), round(float(y) / resolution))
 
 
+def _drop_zone_frame(color):
+    return f"drop_zone_{color}_frame"
+
+
+def _puck_frame(color):
+    return f"puck_{color}_frame"
+
+
+def _lookup_frame_point(tf_buffer, frame_id, timeout_sec=0.12):
+    try:
+        transform = tf_buffer.lookup_transform(
+            "map", frame_id, rospy.Time(0), rospy.Duration(timeout_sec)
+        )
+        return Point(
+            x=transform.transform.translation.x,
+            y=transform.transform.translation.y,
+            z=transform.transform.translation.z,
+        )
+    except Exception:
+        return None
+
+
+def _lookup_frame_transform(tf_buffer, frame_id, timeout_sec=0.12):
+    try:
+        return tf_buffer.lookup_transform(
+            "map", frame_id, rospy.Time(0), rospy.Duration(timeout_sec)
+        )
+    except Exception:
+        return None
+
+
+def _quat_marker_normal_xy(qx, qy, qz, qw):
+    """Marker +Z axis projected in map XY from quaternion."""
+    return (
+        2.0 * (qx * qz + qw * qy),
+        2.0 * (qy * qz - qw * qx),
+    )
+
+
 # Helper function to get robot pose
 def get_robot_pose(tf_buffer):
     try:
@@ -821,6 +860,7 @@ def navigate_to_goal(
     max_angular,
     label,
     safety=None,
+    allow_servo_fallback=True,
 ):
     safety = safety or SafetyMonitor(tf_buffer)
     safe_margin = float(rospy.get_param("~safe_goal_margin_m", 0.20))
@@ -833,6 +873,12 @@ def navigate_to_goal(
 
     move_base_ready = move_base_ready or move_base.wait_for_server(rospy.Duration(1.0))
     if not move_base_ready:
+        if not allow_servo_fallback:
+            publish_event(
+                event_pub,
+                f"[MISSION] move_base unavailable for {label}; skipping non-move_base fallback.",
+            )
+            return False, move_base_ready
         arrived = servo_to_map_point(
             tf_buffer,
             cmd_pub,
@@ -905,11 +951,18 @@ def navigate_to_goal(
             # doesn't have to guess why DELIVER kept silently bouncing back
             # to LOCATE_PUCK.
             state_names = {4: "ABORTED", 5: "REJECTED", 9: "LOST"}
+            fallback_note = (
+                "falling back to servo."
+                if allow_servo_fallback
+                else "no servo fallback in this mode."
+            )
             publish_event(
                 event_pub,
                 f"[MISSION] move_base {state_names.get(state, state)} navigation to "
-                f"{label} at ({goal['x']:.2f}, {goal['y']:.2f}); falling back to servo.",
+                f"{label} at ({goal['x']:.2f}, {goal['y']:.2f}); {fallback_note}",
             )
+            if not allow_servo_fallback:
+                return False, move_base_ready
             arrived = servo_to_map_point(
                 tf_buffer,
                 cmd_pub,
@@ -945,6 +998,8 @@ def navigate_to_goal(
         if (rospy.Time.now() - start).to_sec() >= timeout_sec:
             move_base.cancel_goal()
             publish_event(event_pub, f"[MISSION] Navigation to {label} timed out.")
+            if not allow_servo_fallback:
+                return False, move_base_ready
             return False, move_base_ready
         try:
             rate.sleep()
@@ -1109,6 +1164,85 @@ class InitScan(smach.State):
                 pass
 
 
+class VisualInitScan(smach.State):
+    def __init__(self, tf_buffer, event_pub):
+        smach.State.__init__(self, outcomes=["scan_done"])
+        self.tf_buffer = tf_buffer
+        self.event_pub = event_pub
+        self.cmd_pub = rospy.Publisher("/cmd_vel_servo", Twist, queue_size=1)
+        self.safety = SafetyMonitor(self.tf_buffer)
+        self.visual_spin_yaw_speed = float(
+            rospy.get_param("~visual_init_scan_yaw_speed", 0.35)
+        )
+        self.visual_spin_duration_sec = float(
+            rospy.get_param("~visual_init_scan_duration_sec", 22.0)
+        )
+        self.visual_scan_min_duration_sec = float(
+            rospy.get_param("~visual_init_scan_min_duration_sec", 6.0)
+        )
+        self.required_drop_zone_count = int(
+            rospy.get_param("~required_drop_zone_count", len(mission_data.target_order))
+        )
+
+    def execute(self, userdata):
+        publish_event(self.event_pub, "[MISSION] State: VISUAL_INIT_SCAN")
+        known = self._known_drop_zones()
+        if known >= self.required_drop_zone_count:
+            publish_event(
+                self.event_pub,
+                f"[MISSION] Visual scan skipped; tags already known: {known}/{self.required_drop_zone_count}.",
+            )
+            return "scan_done"
+
+        cmd = Twist()
+        cmd.angular.z = self.visual_spin_yaw_speed
+        rate = rospy.Rate(10)
+        start = rospy.Time.now()
+        while not rospy.is_shutdown():
+            elapsed = (rospy.Time.now() - start).to_sec()
+            if elapsed >= self.visual_spin_duration_sec:
+                break
+            known = self._known_drop_zones()
+            if (
+                known >= self.required_drop_zone_count
+                and elapsed >= self.visual_scan_min_duration_sec
+            ):
+                break
+            publish_safe_twist(
+                self.cmd_pub, cmd, self.safety, self.event_pub, "visual init scan"
+            )
+            try:
+                rate.sleep()
+            except rospy.ROSInterruptException:
+                break
+
+        self.cmd_pub.publish(Twist())
+        known = self._known_drop_zones()
+        publish_event(
+            self.event_pub,
+            f"[MISSION] Visual init scan complete; tags known: {known}/{self.required_drop_zone_count}.",
+        )
+        try:
+            rospy.sleep(0.3)
+        except rospy.ROSInterruptException:
+            pass
+        return "scan_done"
+
+    def _known_drop_zones(self):
+        known = 0
+        now = rospy.Time.now()
+        for color in mission_data.target_order:
+            if color in mission_data.drop_zone_memory:
+                known += 1
+                continue
+            point = _lookup_frame_point(self.tf_buffer, _drop_zone_frame(color), 0.03)
+            if point is None:
+                continue
+            mission_data.drop_zone_memory[color] = {"point": point, "stamp": now}
+            known += 1
+        return known
+
+
 class DiscoverCorners(smach.State):
     def __init__(self, tf_buffer, event_pub, analyzer):
         smach.State.__init__(self, outcomes=["tags_complete", "need_scan"])
@@ -1135,6 +1269,13 @@ class DiscoverCorners(smach.State):
                 return "need_scan"
             mission_data.arena = ArenaModel(bbox)
             mission_data.arena.set_start_corner(get_robot_pose(self.tf_buffer))
+
+        now = rospy.Time.now()
+        for color in mission_data.target_order:
+            point = _lookup_frame_point(self.tf_buffer, _drop_zone_frame(color), 0.05)
+            if point is None:
+                continue
+            mission_data.drop_zone_memory[color] = {"point": point, "stamp": now}
 
         for color, entry in list(mission_data.drop_zone_memory.items()):
             point = _memory_point(entry)
@@ -1191,7 +1332,7 @@ class TagTour(smach.State):
             rospy.get_param("~tag_vantage_wall_margin_m", 0.45)
         )
         self.tag_tour_use_move_base = bool(
-            rospy.get_param("~tag_tour_use_move_base", False)
+            rospy.get_param("~tag_tour_use_move_base", True)
         )
         self.tag_tour_goal_timeout_sec = float(
             rospy.get_param("~tag_tour_goal_timeout_sec", 25.0)
@@ -1285,6 +1426,7 @@ class TagTour(smach.State):
                     self.servo_goal_max_angular,
                     f"corner {corner_idx} tag vantage",
                     self.safety,
+                    allow_servo_fallback=False,
                 )
             else:
                 _arrived = servo_to_map_point(
@@ -1318,6 +1460,12 @@ class TagTour(smach.State):
                         self.safety,
                         ytol,
                     )
+            if not _arrived:
+                publish_event(
+                    self.event_pub,
+                    f"[MISSION] Could not reach corner {corner_idx} vantage; trying another corner.",
+                )
+                continue
             try:
                 rospy.sleep(self.tag_dwell_sec)
             except rospy.ROSInterruptException:
@@ -1410,6 +1558,7 @@ class LocatePuck(smach.State):
                 self.servo_goal_max_angular,
                 f"{next_color} puck search",
                 self.safety,
+                allow_servo_fallback=False,
             )
             self._active_scan()
             if self._target_is_known(next_color):
@@ -1426,6 +1575,13 @@ class LocatePuck(smach.State):
         return None
 
     def _target_is_known(self, color):
+        tf_point = _lookup_frame_point(self.tf_buffer, _puck_frame(color), 0.03)
+        if tf_point is not None:
+            mission_data.puck_memory[color] = {
+                "point": tf_point,
+                "stamp": rospy.Time.now(),
+            }
+            return True
         entry = mission_data.puck_memory.get(color)
         return entry is not None and _is_fresh(entry, self.known_object_stale_sec)
 
@@ -1473,10 +1629,14 @@ class Approach(smach.State):
     def execute(self, userdata):
         publish_event(self.event_pub, "[MISSION] State: APPROACH")
         color = mission_data.current_target_color
-        if not color or color not in mission_data.puck_memory:
+        if not color:
             return "failed"
 
-        puck = _memory_point(mission_data.puck_memory[color])
+        puck = _lookup_frame_point(self.tf_buffer, _puck_frame(color), 0.08)
+        if puck is not None:
+            mission_data.puck_memory[color] = {"point": puck, "stamp": rospy.Time.now()}
+        elif color in mission_data.puck_memory:
+            puck = _memory_point(mission_data.puck_memory[color])
         if puck is None:
             return "failed"
         robot = get_robot_pose(self.tf_buffer)
@@ -1513,6 +1673,7 @@ class Approach(smach.State):
             self.servo_goal_max_angular,
             f"{color} puck",
             self.safety,
+            allow_servo_fallback=False,
         )
         if arrived:
             return "arrived"
@@ -1757,6 +1918,9 @@ class Deliver(smach.State):
         # width (~0.13) = ~0.42 m before move_base will plan a path. Default a
         # bit further out and let retries push us closer if needed.
         self.dropoff_distance_m = float(rospy.get_param("~dropoff_distance_m", 0.55))
+        self.drop_zone_frame_timeout_sec = float(
+            rospy.get_param("~drop_zone_frame_timeout_sec", 0.15)
+        )
         self.goal_tolerance_m = float(
             rospy.get_param("~deliver_goal_tolerance_m", 0.25)
         )
@@ -1776,15 +1940,6 @@ class Deliver(smach.State):
         if not color:
             return "failed"
 
-        arena = mission_data.arena
-        if arena is None or color not in arena.color_to_corner:
-            publish_event(
-                self.event_pub,
-                f"[MISSION] Unknown mapped corner for {color}. Re-exploring...",
-            )
-            return "failed"
-
-        corner_idx = arena.color_to_corner[color]
         max_retries = int(rospy.get_param("~deliver_retry_limit", 3))
         retry_insets = [
             self.dropoff_distance_m,
@@ -1797,52 +1952,43 @@ class Deliver(smach.State):
 
         for attempt in range(max_retries):
             inset = retry_insets[min(attempt, len(retry_insets) - 1)]
-            goal_dict = arena.vantage(corner_idx, inset)
-            # First attempt asks move_base for a planned path. Subsequent
-            # attempts skip straight to the reactive servo because experience
-            # shows move_base burns ~90 s in rotate-recovery near the
-            # drop-zone markers before aborting, which makes the robot look
-            # frozen. Servo navigation has lidar-based obstacle avoidance and
-            # is what reliably gets us in for the release.
-            use_move_base = attempt == 0
+            goal_dict = self._drop_zone_goal_from_tf(color, inset)
+            if goal_dict is None:
+                arena = mission_data.arena
+                if arena is None or color not in arena.color_to_corner:
+                    publish_event(
+                        self.event_pub,
+                        f"[MISSION] No TF or mapped corner for {color} drop zone.",
+                    )
+                    return "failed"
+                corner_idx = arena.color_to_corner[color]
+                goal_dict = arena.vantage(corner_idx, inset)
+                publish_event(
+                    self.event_pub,
+                    f"[MISSION] Drop-zone TF unavailable for {color}; using arena corner fallback.",
+                )
             publish_event(
                 self.event_pub,
                 f"[MISSION] Delivering {color} puck to ArUco zone "
                 f"(attempt {attempt + 1}/{max_retries}, inset {inset:.2f} m, "
-                f"goal=({goal_dict['x']:.2f}, {goal_dict['y']:.2f}), "
-                f"mode={'move_base' if use_move_base else 'servo'})...",
+                f"goal=({goal_dict['x']:.2f}, {goal_dict['y']:.2f}), mode=move_base)...",
             )
-            if use_move_base:
-                arrived, self.move_base_ready = navigate_to_goal(
-                    self.move_base,
-                    self.move_base_ready,
-                    self.tf_buffer,
-                    self.cmd_pub,
-                    self.event_pub,
-                    goal_dict,
-                    per_attempt_timeout,
-                    self.goal_tolerance_m,
-                    self.servo_goal_linear_speed,
-                    self.servo_goal_angular_gain,
-                    self.servo_goal_max_angular,
-                    f"{color} drop zone",
-                    self.safety,
-                )
-            else:
-                arrived = servo_to_map_point(
-                    self.tf_buffer,
-                    self.cmd_pub,
-                    self.event_pub,
-                    goal_dict["x"],
-                    goal_dict["y"],
-                    self.goal_tolerance_m,
-                    per_attempt_timeout,
-                    self.servo_goal_linear_speed,
-                    self.servo_goal_angular_gain,
-                    self.servo_goal_max_angular,
-                    f"{color} drop zone",
-                    self.safety,
-                )
+            arrived, self.move_base_ready = navigate_to_goal(
+                self.move_base,
+                self.move_base_ready,
+                self.tf_buffer,
+                self.cmd_pub,
+                self.event_pub,
+                goal_dict,
+                per_attempt_timeout,
+                self.goal_tolerance_m,
+                self.servo_goal_linear_speed,
+                self.servo_goal_angular_gain,
+                self.servo_goal_max_angular,
+                f"{color} drop zone",
+                self.safety,
+                allow_servo_fallback=False,
+            )
             if arrived:
                 publish_event(
                     self.event_pub,
@@ -1888,6 +2034,32 @@ class Deliver(smach.State):
         self._backup_after_release()
         clear_move_base_costmaps()
         return "failed"
+
+    def _drop_zone_goal_from_tf(self, color, standoff_m):
+        transform = _lookup_frame_transform(
+            self.tf_buffer, _drop_zone_frame(color), self.drop_zone_frame_timeout_sec
+        )
+        if transform is None:
+            return None
+
+        tx = float(transform.transform.translation.x)
+        ty = float(transform.transform.translation.y)
+        q = transform.transform.rotation
+        nx, ny = _quat_marker_normal_xy(q.x, q.y, q.z, q.w)
+        nxy = math.hypot(nx, ny)
+        if nxy < 1e-3:
+            robot = get_robot_pose(self.tf_buffer)
+            if robot is None:
+                return None
+            nx = robot.x - tx
+            ny = robot.y - ty
+            nxy = math.hypot(nx, ny)
+            if nxy < 1e-3:
+                return None
+
+        goal_x = tx + standoff_m * nx / nxy
+        goal_y = ty + standoff_m * ny / nxy
+        return {"x": goal_x, "y": goal_y, "yaw": math.atan2(ty - goal_y, tx - goal_x)}
 
     def _backup_after_release(self):
         cmd = Twist()
@@ -2044,6 +2216,11 @@ def main():
         smach.StateMachine.add(
             "INIT_SCAN",
             InitScan(tf_buffer, event_pub, analyzer),
+            transitions={"scan_done": "VISUAL_INIT_SCAN"},
+        )
+        smach.StateMachine.add(
+            "VISUAL_INIT_SCAN",
+            VisualInitScan(tf_buffer, event_pub),
             transitions={"scan_done": "DISCOVER_CORNERS"},
         )
         smach.StateMachine.add(
@@ -2057,7 +2234,7 @@ def main():
         smach.StateMachine.add(
             "TAG_TOUR",
             TagTour(tf_buffer, event_pub),
-            transitions={"tour_progress": "INIT_SCAN"},
+            transitions={"tour_progress": "VISUAL_INIT_SCAN"},
         )
         smach.StateMachine.add(
             "LOCATE_PUCK",

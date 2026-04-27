@@ -1,6 +1,6 @@
 map_frame: map
-# Default follows common RealSense naming; override per camera driver/frame tree.
-camera_frame: camera_color_optical_frame
+# Omit camera_frame to use color image header.frame_id (matches Gazebo OpenNI + typical RealSense).
+# rosbot_description uses camera_rgb_frame / camera_depth_frame, not camera_color_optical_frame.
 
 color_topic: /camera/color/image_raw
 depth_topic: /camera/depth/image_raw
@@ -15,6 +15,8 @@ depth_patch_radius_px: 2
 publish_cooldown_sec: 0.40
 min_publish_distance_m: 0.05
 tf_lookup_timeout_sec: 0.07
+object_tf_publish_rate_hz: 12.0
+object_tf_max_age_sec: 4.0
 
 # Use full image while tuning ArUco/puck detection in the real arena.
 crop_top_fraction: 0.00
@@ -34,6 +36,7 @@ hsv_ranges:
 
 aruco:
   dictionary: DICT_4X4_50
+  marker_size_m: 0.25
   marker_color_map:
     "1": red
     "2": green
