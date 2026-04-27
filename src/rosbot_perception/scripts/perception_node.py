@@ -8,8 +8,8 @@ import numpy as np
 import rospy
 import tf2_ros
 
-# Importing do_transform_point from tf2_geometry_msgs also registers
-# PointStamped/PoseStamped converters with tf2_ros.
+# Importing from tf2_geometry_msgs registers PointStamped/PoseStamped
+# converters with tf2_ros as an import side-effect.
 from tf2_geometry_msgs import do_transform_point
 from cv_bridge import CvBridge, CvBridgeError
 from geometry_msgs.msg import Point, PointStamped

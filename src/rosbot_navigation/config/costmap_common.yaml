@@ -1,6 +1,6 @@
 footprint: [[-0.13, -0.13], [-0.13, 0.13], [0.16, 0.13], [0.16, -0.13]]
-# Keep planner clearance above IR stop_distance (0.16 m) to prevent safety
-# deadlocks where DWA commands motion that /cmd_vel_safety must clamp to zero.
+# Keep planner clearance above IR stop_distance (0.16 m) with +0.04 m margin
+# (robot_radius=0.20) to prevent /cmd_vel_safety deadlocks near walls.
 robot_radius: 0.20
 
 obstacle_layer:

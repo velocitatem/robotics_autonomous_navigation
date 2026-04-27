@@ -1,4 +1,5 @@
 map_frame: map
+# Default follows common RealSense naming; override per camera driver/frame tree.
 camera_frame: camera_color_optical_frame
 
 color_topic: /camera/color/image_raw
