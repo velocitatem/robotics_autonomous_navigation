@@ -8,10 +8,9 @@ import numpy as np
 import rospy
 import tf2_ros
 
-# Importing tf2_geometry_msgs registers PointStamped/PoseStamped converters
-# with tf2_ros.Buffer. Without it, tf_buffer.transform(PointStamped) raises
-# TypeException and every detection callback crashes silently.
-import tf2_geometry_msgs  # noqa: F401  (registration side-effect)
+# Importing from tf2_geometry_msgs registers PointStamped/PoseStamped
+# converters with tf2_ros as an import side-effect.
+from tf2_geometry_msgs import do_transform_point
 from cv_bridge import CvBridge, CvBridgeError
 from geometry_msgs.msg import Point, PointStamped
 from rosbot_competition_msgs.msg import SpatialDetection, MissionEvent
@@ -41,6 +40,9 @@ class PerceptionNode:
         self.publish_cooldown_sec = float(rospy.get_param("~publish_cooldown_sec", 0.4))
         self.min_publish_distance_m = float(
             rospy.get_param("~min_publish_distance_m", 0.05)
+        )
+        self.tf_lookup_timeout_sec = float(
+            rospy.get_param("~tf_lookup_timeout_sec", 0.07)
         )
         # Remove noisy sky/ceiling band: CV + ArUco run on the image below this strip.
         self.crop_top_fraction = float(rospy.get_param("~crop_top_fraction", 0.20))
@@ -328,29 +330,31 @@ class PerceptionNode:
         source.point = Point(x=x, y=y, z=z)
 
         try:
-            map_point = self.tf_buffer.transform(
-                source, self.map_frame, rospy.Duration(0.07)
+            tf_timeout = rospy.Duration(self.tf_lookup_timeout_sec)
+            transform = self.tf_buffer.lookup_transform(
+                self.map_frame, camera_frame, stamp, tf_timeout
             )
+            map_point = do_transform_point(source, transform)
         except tf2_ros.ExtrapolationException:
-            source.header.stamp = rospy.Time(0)
-            try:
-                map_point = self.tf_buffer.transform(
-                    source, self.map_frame, rospy.Duration(0.07)
-                )
-                rospy.logwarn_throttle(
-                    2.0,
-                    "[VISION] Camera/TF timestamps are out of sync; using latest TF for projection.",
-                )
-            except (
-                tf2_ros.LookupException,
-                tf2_ros.ExtrapolationException,
-                tf2_ros.ConnectivityException,
-            ):
-                return
+            # Intentional: do not fall back to Time(0), because latest-TF
+            # projection while turning/skidding can mis-map puck/tag positions.
+            rospy.logwarn_throttle(
+                2.0,
+                "[VISION] Camera/TF timestamps are out of sync; dropping projection for this frame.",
+            )
+            return
         except (
             tf2_ros.LookupException,
             tf2_ros.ConnectivityException,
-        ):
+        ) as exc:
+            rospy.logwarn_throttle(
+                2.0,
+                "[VISION] TF lookup failed (%s -> %s @ %.3f): %s",
+                camera_frame,
+                self.map_frame,
+                stamp.to_sec(),
+                str(exc),
+            )
             return
 
         key = f"{object_class}:{color}:{marker_id}"

@@ -46,7 +46,7 @@ tag_corner_snap_distance_m: 0.70
 corner_vantage_inset_m: 1.35
 corner_vantage_center_fraction: 0.65
 tag_vantage_wall_margin_m: 0.45
-tag_tour_use_move_base: false
+tag_tour_use_move_base: true
 tag_tour_goal_timeout_sec: 45.0
 tag_vantage_yaw_align_timeout_sec: 12.0
 tag_vantage_yaw_tolerance_rad: 0.18

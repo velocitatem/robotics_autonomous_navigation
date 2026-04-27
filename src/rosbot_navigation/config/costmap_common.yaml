@@ -1,5 +1,6 @@
 footprint: [[-0.13, -0.13], [-0.13, 0.13], [0.16, 0.13], [0.16, -0.13]]
-robot_radius: 0.14
+# Keep planner clearance above /ir_safety_stop/stop_distance (0.16 m) + margin.
+robot_radius: 0.20  # 0.16m (IR stop_distance) + 0.04m safety margin
 
 obstacle_layer:
   enabled: true
@@ -25,7 +26,9 @@ obstacle_layer:
     data_type: PointCloud2
     topic: /puck_obstacles
     marking: true
-    clearing: false
+    # Pucks are manipulated/removed by the robot, so this source must be
+    # raytrace-clearable to prevent permanent ghost obstacles in the map.
+    clearing: true
     expected_update_rate: 0.0
     observation_persistence: 0.4
     obstacle_range: 3.0

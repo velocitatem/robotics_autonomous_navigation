@@ -1,11 +1,10 @@
 DWAPlannerROS:
-  # Robot velocity envelope. Allow a small reverse component so DWA can back
-  # away from corners; min_vel_x = 0 prevents that and is a common reason DWA
-  # reports "failed to produce path" inside the arena.
+  # Robot velocity envelope. Keep local planning forward-only so DWA prefers
+  # in-place rotations near walls instead of blind reverse oscillations.
   # Slightly lower forward cap on hardware so impacts (if any) are gentler; raise
   # if maps are good and the robot is timid in open areas.
   max_vel_x: 0.12
-  min_vel_x: -0.07
+  min_vel_x: 0.0
   max_vel_y: 0.0
   min_vel_y: 0.0
   # Total planar speed window. min_vel_trans must be strictly less than
@@ -31,7 +30,9 @@ DWAPlannerROS:
   yaw_goal_tolerance: 0.30
   latch_xy_goal_tolerance: false
 
-  sim_time: 1.3
+  # Extend trajectory horizon so DWA evaluates obstacle interactions farther
+  # ahead instead of reacting only near the bumper footprint.
+  sim_time: 2.5
   sim_granularity: 0.025
   vx_samples: 10
   vtheta_samples: 24

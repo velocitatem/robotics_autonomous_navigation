@@ -1,5 +1,6 @@
 map_frame: map
-camera_frame: ""
+# Default follows common RealSense naming; override per camera driver/frame tree.
+camera_frame: camera_color_optical_frame
 
 color_topic: /camera/color/image_raw
 depth_topic: /camera/depth/image_raw
@@ -13,6 +14,7 @@ min_contour_area: 450
 depth_patch_radius_px: 2
 publish_cooldown_sec: 0.40
 min_publish_distance_m: 0.05
+tf_lookup_timeout_sec: 0.07
 
 # Use full image while tuning ArUco/puck detection in the real arena.
 crop_top_fraction: 0.00
