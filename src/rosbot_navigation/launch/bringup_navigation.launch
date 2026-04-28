@@ -6,8 +6,8 @@
   <arg name="enable_ir_safety" default="true"/>
   <arg name="enable_laser_nav_safety" default="true"/>
   <arg name="enable_scan_normalizer" default="false"/>
-  <arg name="scan_normalizer_input_topic" default="/scan_raw"/>
-  <arg name="scan_normalizer_output_topic" default="/scan"/>
+  <arg name="scan_normalizer_input_topic" default="/scan"/>
+  <arg name="scan_normalizer_output_topic" default="/scan_normalized"/>
 
   <include file="$(find rosbot_navigation)/launch/navigation.launch">
     <arg name="enable_slam" value="$(eval 'false' if str(arg('use_saved_map')).lower() == 'true' else 'true')"/>

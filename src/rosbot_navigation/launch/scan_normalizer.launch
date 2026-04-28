@@ -1,14 +1,14 @@
 <launch>
   <!--
-    Republish a beam-count-stable /scan for slam_toolbox / Karto.
+    Republish a beam-count-stable scan stream for slam_toolbox / Karto.
 
-    To use this, remap the lidar driver to publish on input_topic
-    (default /scan_raw) and consumers will see the normalized stream on
-    output_topic (default /scan). Disabled by default; enable from
-    competition_system.launch via enable_scan_normalizer:=true.
+    Defaults: subscribe to /scan from the lidar driver and publish a
+    normalized copy on /scan_normalized. competition_system.launch will
+    automatically point slam_toolbox at /scan_normalized when
+    enable_scan_normalizer:=true.
   -->
-  <arg name="input_topic" default="/scan_raw"/>
-  <arg name="output_topic" default="/scan"/>
+  <arg name="input_topic" default="/scan"/>
+  <arg name="output_topic" default="/scan_normalized"/>
   <arg name="expected_count" default="0"/>
   <arg name="fix_count" default="true"/>
 

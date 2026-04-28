@@ -7,8 +7,8 @@
   <arg name="enable_ir_safety" default="true"/>
   <arg name="enable_laser_nav_safety" default="true"/>
   <arg name="enable_scan_normalizer" default="false"/>
-  <arg name="scan_normalizer_input_topic" default="/scan_raw"/>
-  <arg name="scan_normalizer_output_topic" default="/scan"/>
+  <arg name="scan_normalizer_input_topic" default="/scan"/>
+  <arg name="scan_normalizer_output_topic" default="/scan_normalized"/>
   <arg name="enable_mission" default="true"/>
   <!-- RViz inspector. Only spawns when both enable_inspector is true AND a
        DISPLAY is available, so headless SSH sessions do not get a Qt crash

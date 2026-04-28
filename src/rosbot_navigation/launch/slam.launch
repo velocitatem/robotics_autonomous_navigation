@@ -1,12 +1,17 @@
 <launch>
   <arg name="use_slam_toolbox" default="true"/>
+  <!-- Allow upstream launches to redirect SLAM to a normalized scan topic
+       (e.g. /scan_normalized from rosbot_navigation/scan_normalizer.py)
+       when the lidar driver publishes inconsistent beam counts. Other
+       consumers (move_base, safety, mission control) keep reading /scan. -->
+  <arg name="scan_topic" default="/scan"/>
 
   <group if="$(arg use_slam_toolbox)">
     <node pkg="slam_toolbox" type="async_slam_toolbox_node" name="slam_toolbox" output="screen">
       <param name="odom_frame" value="odom"/>
       <param name="map_frame" value="map"/>
       <param name="base_frame" value="base_link"/>
-      <param name="scan_topic" value="/scan"/>
+      <param name="scan_topic" value="$(arg scan_topic)"/>
       <param name="mode" value="mapping"/>
       <param name="solver_plugin" value="solver_plugins::CeresSolver"/>
       <param name="resolution" value="0.05"/>

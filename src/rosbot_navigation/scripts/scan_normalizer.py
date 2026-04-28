@@ -1,23 +1,24 @@
 #!/usr/bin/env python3
 """Normalize ``sensor_msgs/LaserScan`` so consumers see a stable ray count.
 
-slam_toolbox / Karto lock onto the number of range readings from the very first
-``LaserScan`` they see and emit
+slam_toolbox / Karto lock onto the number of range readings from the very
+first ``LaserScan`` they see and emit
 ``LaserRangeScan contains <N> range readings, expected <M>`` whenever a later
 message disagrees. On real lidars (and some Gazebo plugins) ``angle_min``,
 ``angle_max`` and ``angle_increment`` occasionally drift by floating-point
 rounding so ``len(ranges)`` flips between, e.g., 1946 and 1947 beams.
 
-This relay subscribes to a raw scan topic, locks in the expected beam count
-from the first message, then forces every subsequent message to that exact
-length by truncating or padding (with ``range_min`` so the cell is treated as
-invalid) ``ranges`` and ``intensities``. ``angle_max`` is recomputed from
+This relay subscribes to the lidar's ``/scan``, locks in the expected beam
+count from the first message, then forces every subsequent message to that
+exact length by truncating or padding (with ``range_min``) ``ranges`` and
+``intensities``. ``angle_max`` is recomputed from
 ``angle_min + (n - 1) * angle_increment`` to stay self-consistent.
 
-Designed to be transparent: leave ``input_topic == output_topic`` if you only
-want diagnostics, otherwise remap the lidar driver to publish on the input
-topic and let downstream consumers (slam_toolbox, move_base, mission control)
-read from the output.
+The default topology is ``/scan`` -> ``/scan_normalized`` so SLAM can be
+pointed at the normalized topic without touching the lidar driver. Other
+consumers (move_base costmap obstacle layer, ``laser_nav_safety``,
+``mission_controller``) iterate scan ranges by index and tolerate variable
+beam counts, so they keep reading ``/scan`` directly.
 """
 
 import math
@@ -28,8 +29,8 @@ from sensor_msgs.msg import LaserScan
 
 class ScanNormalizer:
     def __init__(self):
-        self.input_topic = rospy.get_param("~input_topic", "/scan_raw")
-        self.output_topic = rospy.get_param("~output_topic", "/scan")
+        self.input_topic = rospy.get_param("~input_topic", "/scan")
+        self.output_topic = rospy.get_param("~output_topic", "/scan_normalized")
         self.expected_count = int(rospy.get_param("~expected_count", 0))
         self.fix_count = bool(rospy.get_param("~fix_count", True))
         self.warn_throttle_sec = float(rospy.get_param("~warn_throttle_sec", 5.0))

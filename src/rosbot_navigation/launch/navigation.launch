@@ -8,10 +8,14 @@
   <arg name="enable_laser_nav_safety" default="true"/>
   <!-- When the lidar driver publishes inconsistent beam counts (e.g. 1946 vs
        1947), enable this to normalize /scan before slam_toolbox sees it.
-       Requires the lidar driver to be remapped to publish on /scan_raw. -->
+       The normalizer subscribes to /scan and republishes /scan_normalized,
+       and slam_toolbox is automatically pointed at the normalized topic.
+       Other consumers keep reading /scan and tolerate variable beam counts. -->
   <arg name="enable_scan_normalizer" default="false"/>
-  <arg name="scan_normalizer_input_topic" default="/scan_raw"/>
-  <arg name="scan_normalizer_output_topic" default="/scan"/>
+  <arg name="scan_normalizer_input_topic" default="/scan"/>
+  <arg name="scan_normalizer_output_topic" default="/scan_normalized"/>
+  <arg name="slam_scan_topic"
+       default="$(eval arg('scan_normalizer_output_topic') if str(arg('enable_scan_normalizer')).lower() == 'true' else '/scan')"/>
 
   <include if="$(arg enable_scan_normalizer)"
            file="$(find rosbot_navigation)/launch/scan_normalizer.launch">
@@ -21,6 +25,7 @@
 
   <include if="$(eval str(arg('enable_slam')).lower() == 'true' and str(arg('use_saved_map')).lower() != 'true')" file="$(find rosbot_navigation)/launch/slam.launch">
     <arg name="use_slam_toolbox" value="$(arg use_slam_toolbox)"/>
+    <arg name="scan_topic" value="$(arg slam_scan_topic)"/>
   </include>
 
   <group if="$(arg use_saved_map)">

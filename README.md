@@ -200,22 +200,27 @@ If `slam_toolbox` (Karto) spams warnings like
 driver is publishing an inconsistent number of rays across messages. Karto
 locks onto the count from the first scan and rejects mismatched ones.
 
-Mitigation without touching the driver: enable the bundled normalizer. It
-re-publishes a fixed-length `/scan` so SLAM, costmaps, and the safety
-nodes all see a stable beam count.
+Enable the bundled normalizer to fix it without touching the driver:
 
-1. Remap the lidar driver to publish on `/scan_raw` (driver-specific).
-2. Launch with the normalizer enabled:
-   ```bash
-   roslaunch rosbot_competition_bringup competition_system.launch \
-       enable_scan_normalizer:=true
-   ```
-   Override topics with `scan_normalizer_input_topic:=...` and
-   `scan_normalizer_output_topic:=...` if you need different names.
+```bash
+roslaunch rosbot_competition_bringup competition_system.launch \
+    enable_scan_normalizer:=true
+```
 
-The node lives in `rosbot_navigation/scripts/scan_normalizer.py` and pads or
-truncates `ranges`/`intensities` to the count locked from the first scan,
-recomputing `angle_max` to stay self-consistent.
+What this wires up automatically:
+
+- `scan_normalizer` subscribes to `/scan` (the lidar) and publishes a
+  fixed-length copy on `/scan_normalized`.
+- `slam_toolbox` is pointed at `/scan_normalized` instead of `/scan`.
+- `move_base` costmaps, `laser_nav_safety`, `ir_safety_stop`, and
+  `mission_controller` keep reading `/scan` directly. They iterate ranges
+  by index and tolerate variable beam counts already.
+
+Override topics with `scan_normalizer_input_topic:=...` and
+`scan_normalizer_output_topic:=...` if your environment uses different
+names. The node lives in `rosbot_navigation/scripts/scan_normalizer.py`
+and pads or truncates `ranges`/`intensities` to the count locked from the
+first scan, recomputing `angle_max` to stay self-consistent.
 
 ### Time synchronization across machines
 
