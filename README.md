@@ -197,8 +197,13 @@ is set, then keep the default `enable_inspector:=true`.
 
 If `slam_toolbox` (Karto) spams warnings like
 `LaserRangeScan contains 1947 range readings, expected 1946`, your lidar
-driver is publishing an inconsistent number of rays across messages. Karto
-locks onto the count from the first scan and rejects mismatched ones.
+driver and Karto disagree on the ray count. Karto computes
+`expected = round((angle_max - angle_min) / angle_increment) + residual`,
+where `residual = 0` for full-circle 360 lidars and `residual = 1`
+otherwise. Many drivers (RPLIDAR variants, custom firmwares) publish
+`angle_increment = (angle_max - angle_min) / (N - 1)` while putting
+`N` rays in the message, so Karto rejects every scan and `/map` never
+becomes available.
 
 Enable the bundled normalizer to fix it without touching the driver:
 
@@ -209,8 +214,12 @@ roslaunch rosbot_competition_bringup competition_system.launch \
 
 What this wires up automatically:
 
-- `scan_normalizer` subscribes to `/scan` (the lidar) and publishes a
-  fixed-length copy on `/scan_normalized`.
+- `scan_normalizer` subscribes to `/scan` (the lidar), replicates Karto's
+  expected-count formula on the first message, and republishes a copy on
+  `/scan_normalized` with `len(ranges)` trimmed (or padded) to exactly
+  that count. Metadata fields (`angle_min`, `angle_max`,
+  `angle_increment`) are preserved so Karto computes the same expected
+  count on every subsequent message.
 - `slam_toolbox` is pointed at `/scan_normalized` instead of `/scan`.
 - `move_base` costmaps, `laser_nav_safety`, `ir_safety_stop`, and
   `mission_controller` keep reading `/scan` directly. They iterate ranges
@@ -218,21 +227,21 @@ What this wires up automatically:
 
 Override topics with `scan_normalizer_input_topic:=...` and
 `scan_normalizer_output_topic:=...` if your environment uses different
-names. The node lives in `rosbot_navigation/scripts/scan_normalizer.py`
-and pads or truncates `ranges`/`intensities` to the count locked from the
-first scan, recomputing `angle_max` to stay self-consistent.
+names. The node lives in
+[rosbot_navigation/scripts/scan_normalizer.py](src/rosbot_navigation/scripts/scan_normalizer.py).
 
 ### Time synchronization across machines
 
-`competition_system.launch` is typically run with `ROS_MASTER_URI` pointing to
-the robot. If the workstation, robot, and any sensors disagree on wall-clock
-time, you will see TF warnings such as:
+`competition_system.launch` is typically run with `ROS_MASTER_URI` pointing
+to the robot. If the workstation, robot, and any sensors disagree on
+wall-clock time, you will see TF warnings such as:
 
 - `TF_OLD_DATA ignoring data from the past for frame camera_depth_frame`
 - `[VISION] Camera/TF timestamps are out of sync; dropping projection for this frame.`
 
-This is almost always a clock skew problem, not a code bug. Make sure every
-machine in the ROS graph runs `chrony` or `ntpd` against the same source:
+This is almost always a clock skew problem, not a code bug. Make sure
+every machine in the ROS graph runs `chrony` or `ntpd` against the same
+source:
 
 ```bash
 sudo apt install -y chrony
@@ -240,9 +249,22 @@ sudo systemctl enable --now chronyd
 chronyc tracking
 ```
 
-If the robot is offline, run a local NTP server on the workstation and point
-the robot's chrony at it. Until the clocks agree, perception will keep
-dropping projections (intentional safety: stale TFs would mis-place pucks).
+If the robot is offline, run a local NTP server on the workstation and
+point the robot's chrony at it.
+
+The perception node ships with practical defaults for distributed setups
+(see [rosbot_perception/config/perception.yaml](src/rosbot_perception/config/perception.yaml)):
+
+- `tf_lookup_timeout_sec: 0.30` - matches realistic LAN jitter.
+- `sync_slop_sec: 0.15` - color/depth pair matching tolerance.
+- `tf_fallback_max_skew_sec: 0.50` - on TF extrapolation failure, the
+  node retries with the latest TF (`Time(0)`) once before dropping the
+  projection. At the robot's <0.15 m/s motion budget this introduces
+  <8 cm of position error, far below puck/tag tolerances. Set to `0` to
+  restore the original strict behaviour.
+- `clock_skew_warn_threshold_sec: 1.0` - a single loud `logerr` fires
+  when camera stamps lag ROS time beyond this; that threshold means the
+  cause is host clocks, not perception.
 
 ## Repository layout
 

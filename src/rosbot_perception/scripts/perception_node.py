@@ -43,8 +43,18 @@ class PerceptionNode:
             rospy.get_param("~min_publish_distance_m", 0.05)
         )
         self.tf_lookup_timeout_sec = float(
-            rospy.get_param("~tf_lookup_timeout_sec", 0.07)
+            rospy.get_param("~tf_lookup_timeout_sec", 0.30)
         )
+        # On distributed setups (workstation/robot/camera over LAN) TF and
+        # camera stamps disagree by tens to hundreds of milliseconds even
+        # with NTP. When > 0, on TF ExtrapolationException the node retries
+        # with Time(0) (latest TF) provided the requested stamp is within
+        # this many seconds of the buffer's earliest stamp. Trades very
+        # slightly stale extrinsics for getting projections through.
+        self.tf_fallback_max_skew_sec = float(
+            rospy.get_param("~tf_fallback_max_skew_sec", 0.50)
+        )
+        self.sync_slop_sec = float(rospy.get_param("~sync_slop_sec", 0.15))
         # Remove noisy sky/ceiling band: CV + ArUco run on the image below this strip.
         self.crop_top_fraction = float(rospy.get_param("~crop_top_fraction", 0.20))
 
@@ -83,11 +93,12 @@ class PerceptionNode:
         # Clock-skew diagnostics: tolerance in seconds beyond which a
         # one-time loud warning fires telling the operator NTP is broken.
         # Smaller skews are absorbed by the TF buffer / approx-time
-        # synchronizer slop (0.08 s) and the node's tf_lookup_timeout.
+        # synchronizer slop and the node's tf_lookup_timeout.
         self.clock_skew_warn_threshold_sec = float(
             rospy.get_param("~clock_skew_warn_threshold_sec", 1.0)
         )
         self._clock_skew_warned = False
+        self._tf_fallback_warned = False
 
         self.object_tf_broadcaster = tf2_ros.TransformBroadcaster()
 
@@ -107,7 +118,9 @@ class PerceptionNode:
         self.color_sub = message_filters.Subscriber(self.color_topic, Image)
         self.depth_sub = message_filters.Subscriber(self.depth_topic, Image)
         self.sync = message_filters.ApproximateTimeSynchronizer(
-            [self.color_sub, self.depth_sub], queue_size=10, slop=0.08
+            [self.color_sub, self.depth_sub],
+            queue_size=10,
+            slop=self.sync_slop_sec,
         )
         self.sync.registerCallback(self._on_image_pair)
 
@@ -392,20 +405,61 @@ class PerceptionNode:
                 self.map_frame, camera_frame, stamp, tf_timeout
             )
         except tf2_ros.ExtrapolationException as exc:
-            # Intentional: do not fall back to Time(0), because latest-TF
-            # projection while turning/skidding can mis-map puck/tag positions.
             try:
                 skew_sec = (rospy.Time.now() - stamp).to_sec()
             except Exception:
                 skew_sec = float("nan")
             self._maybe_warn_clock_skew(skew_sec)
-            rospy.logwarn_throttle(
-                2.0,
-                "[VISION] Camera/TF timestamps are out of sync (skew=%.3fs); dropping projection. (%s)",
-                skew_sec,
-                str(exc).splitlines()[0] if str(exc) else "ExtrapolationException",
-            )
-            return
+
+            # Optional graceful fallback: when the TF buffer simply hasn't
+            # caught up to the camera's stamp (common during slam_toolbox
+            # warm-up and on networks with ~hundreds of ms of clock jitter),
+            # use the latest TF rather than dropping the projection
+            # entirely. The robot's max linear velocity is ~0.15 m/s, so
+            # 0.5 s of TF skew translates to <8 cm of position error - well
+            # below puck/tag tolerances.
+            if self.tf_fallback_max_skew_sec > 0.0:
+                try:
+                    transform = self.tf_buffer.lookup_transform(
+                        self.map_frame,
+                        camera_frame,
+                        rospy.Time(0),
+                        rospy.Duration(self.tf_lookup_timeout_sec),
+                    )
+                    if not self._tf_fallback_warned:
+                        self._tf_fallback_warned = True
+                        rospy.logwarn(
+                            "[VISION] TF buffer lacks transform at camera stamp "
+                            "(skew=%.3fs); falling back to latest TF. Will keep "
+                            "projecting; this is rate-limited.",
+                            skew_sec,
+                        )
+                except (
+                    tf2_ros.ExtrapolationException,
+                    tf2_ros.LookupException,
+                    tf2_ros.ConnectivityException,
+                ):
+                    rospy.logwarn_throttle(
+                        2.0,
+                        "[VISION] Camera/TF timestamps are out of sync (skew=%.3fs); "
+                        "dropping projection. (%s)",
+                        skew_sec,
+                        str(exc).splitlines()[0]
+                        if str(exc)
+                        else "ExtrapolationException",
+                    )
+                    return
+            else:
+                rospy.logwarn_throttle(
+                    2.0,
+                    "[VISION] Camera/TF timestamps are out of sync (skew=%.3fs); "
+                    "dropping projection. (%s)",
+                    skew_sec,
+                    str(exc).splitlines()[0]
+                    if str(exc)
+                    else "ExtrapolationException",
+                )
+                return
         except (
             tf2_ros.LookupException,
             tf2_ros.ConnectivityException,

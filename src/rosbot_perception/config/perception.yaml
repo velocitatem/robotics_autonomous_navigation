@@ -14,9 +14,28 @@ min_contour_area: 450
 depth_patch_radius_px: 2
 publish_cooldown_sec: 0.40
 min_publish_distance_m: 0.05
-tf_lookup_timeout_sec: 0.07
+# Distributed setups (workstation + robot + camera over LAN) routinely
+# accumulate ~200-500 ms of jitter between camera stamps and TF stamps
+# even with NTP. 0.07 s was tight enough that perception dropped almost
+# every projection until clocks were perfectly aligned. 0.30 s gives the
+# TF buffer time to receive the stamp matching the image without
+# noticeably degrading projection accuracy at the robot's <0.15 m/s
+# motion budget.
+tf_lookup_timeout_sec: 0.30
+# Match-image-pairs slop: 0.08 s drops too many frames when the depth
+# pipeline lags color slightly. 0.15 s aligns with realistic RGBD jitter.
+sync_slop_sec: 0.15
+# Optional: when TF lookup at the camera stamp fails by less than this
+# many seconds, retry with the latest TF (Time(0)). Set to 0 to keep the
+# strict "drop the projection" behaviour. Small values (<= 0.3 s) trade
+# slightly stale extrinsics for actually getting puck/tag detections
+# through during clock skew or slam_toolbox warm-up.
+tf_fallback_max_skew_sec: 0.50
 object_tf_publish_rate_hz: 12.0
 object_tf_max_age_sec: 4.0
+# Loud warning fires once per run when |camera_stamp - ros_now| exceeds
+# this many seconds - that is real host clock drift, fix NTP/chrony.
+clock_skew_warn_threshold_sec: 1.0
 
 # Use full image while tuning ArUco/puck detection in the real arena.
 crop_top_fraction: 0.00
