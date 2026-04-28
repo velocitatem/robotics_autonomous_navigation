@@ -1,6 +1,6 @@
 <launch>
   <arg name="config" default="$(find rosbot_mission_control)/config/mission.yaml"/>
-  <include file="$(find rosbot_mission_control)/launch/mission.launch">
-    <arg name="config" value="$(arg config)"/>
-  </include>
+  <node pkg="rosbot_mission_control" type="mission_controller.py" name="mission_controller" output="screen">
+    <rosparam file="$(arg config)" command="load"/>
+  </node>
 </launch>
