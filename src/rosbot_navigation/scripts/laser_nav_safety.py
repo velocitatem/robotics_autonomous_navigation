@@ -53,7 +53,19 @@ class LaserNavSafety:
         in_topic = rospy.get_param("~input_topic", "/cmd_vel_nav_unsafe")
         out_topic = rospy.get_param("~output_topic", "/cmd_vel_nav")
         self.scan_topic = rospy.get_param("~scan_topic", "/scan")
-        self.scan_max_age = rospy.get_param("~scan_max_age_sec", 0.6)
+        # Wall-clock budget for "is the scan fresh enough?". This is measured
+        # against the receive time, not the message header, so cross-host
+        # clock skew (e.g. robot publishing /scan with stamps that lag the
+        # workstation clock by several seconds because NTP isn't running)
+        # does not cause every cmd_vel to be zeroed and the local planner
+        # to oscillate-abort. The header stamp is still used as a sanity
+        # fallback when its absolute drift is small.
+        self.scan_max_age = float(rospy.get_param("~scan_max_age_sec", 1.5))
+        # If the gap between header.stamp and rospy.Time.now() exceeds this,
+        # we assume cross-host clock skew and trust receive time only.
+        self.scan_stamp_skew_tolerance = float(
+            rospy.get_param("~scan_stamp_skew_tolerance_sec", 0.5)
+        )
 
         self.front_stop_m = float(rospy.get_param("~front_stop_m", 0.32))
         self.rear_stop_m = float(rospy.get_param("~rear_stop_m", 0.24))
@@ -70,6 +82,7 @@ class LaserNavSafety:
         self._lock = threading.Lock()
         self._scan = None
         self._scan_stamp = None
+        self._scan_received_at = None
         self.laser_yaw_offset = 0.0
 
         self.tf_buffer = tf2_ros.Buffer()
@@ -94,6 +107,7 @@ class LaserNavSafety:
                 self._laser_frame = msg.header.frame_id
             self._scan = msg
             self._scan_stamp = msg.header.stamp
+            self._scan_received_at = rospy.Time.now()
 
     def _calibrate_laser(self):
         deadline = rospy.Time.now() + rospy.Duration(10.0)
@@ -131,11 +145,26 @@ class LaserNavSafety:
 
     def _scan_fresh(self):
         with self._lock:
-            if self._scan is None or self._scan_stamp is None:
+            if self._scan is None or self._scan_received_at is None:
                 return False, None
-            age = (rospy.Time.now() - self._scan_stamp).to_sec()
-            if age > self.scan_max_age:
+            now = rospy.Time.now()
+            # Primary freshness check: how long since we *received* the scan.
+            # This is robust to cross-host clock skew because the receive
+            # time is always wall-clock-local to this node.
+            recv_age = (now - self._scan_received_at).to_sec()
+            if recv_age > self.scan_max_age:
                 return False, None
+            # Secondary sanity check on the stamp, but only when the stamp
+            # is plausibly synced to local time. If the stamp appears wildly
+            # ahead/behind (which means the publishing host's clock is off,
+            # not that the scan is stale), ignore it instead of declaring
+            # the scan stale; otherwise every cmd_vel gets gagged and the
+            # local planner oscillates and aborts.
+            if self._scan_stamp is not None:
+                stamp_drift = abs((now - self._scan_stamp).to_sec())
+                if stamp_drift <= self.scan_stamp_skew_tolerance:
+                    if stamp_drift > self.scan_max_age:
+                        return False, None
             return True, self._scan
 
     def _on_cmd(self, msg):

@@ -454,8 +454,16 @@ def is_goal_safe(goal, safety_margin_m=0.20):
         return True
     gx = int((goal["x"] - grid.info.origin.position.x) / grid.info.resolution)
     gy = int((goal["y"] - grid.info.origin.position.y) / grid.info.resolution)
+    # If the goal falls outside the currently-mapped grid we treat it as
+    # "unknown but not unsafe". Rejecting out-of-grid goals here was making
+    # corner vantages refuse-to-launch whenever SLAM hadn't finished
+    # exploring that quadrant yet, which then dropped the mission into the
+    # VISUAL_INIT_SCAN -> DISCOVER_CORNERS -> TAG_TOUR loop forever.
+    # move_base / costmap will independently refuse the goal if it really
+    # is on top of an obstacle; here we just guard against goals that the
+    # mapped grid actively shows as occupied.
     if gx < 0 or gy < 0 or gx >= grid.info.width or gy >= grid.info.height:
-        return False
+        return True
     data = np.array(grid.data, dtype=np.int16).reshape(
         (grid.info.height, grid.info.width)
     )
@@ -1314,13 +1322,25 @@ class DiscoverCorners(smach.State):
 
 class TagTour(smach.State):
     def __init__(self, tf_buffer, event_pub):
-        smach.State.__init__(self, outcomes=["tour_progress"])
+        smach.State.__init__(
+            self, outcomes=["tour_progress", "tour_failed"]
+        )
         self.move_base = actionlib.SimpleActionClient("/move_base", MoveBaseAction)
         self.move_base_ready = self.move_base.wait_for_server(rospy.Duration(1.0))
         self.tf_buffer = tf_buffer
         self.event_pub = event_pub
         self.cmd_pub = rospy.Publisher("/cmd_vel_servo", Twist, queue_size=1)
         self.safety = SafetyMonitor(self.tf_buffer)
+        # Counts consecutive tours where every corner failed. After
+        # tag_tour_max_failed_tours such tours we give up on corner
+        # discovery and proceed with whatever drop-zone tags we've already
+        # seen, instead of looping VISUAL_INIT_SCAN -> DISCOVER_CORNERS ->
+        # TAG_TOUR forever when the SLAM-fitted arena bbox is wrong or
+        # move_base cannot find a plan to far vantages.
+        self._consecutive_empty_tours = 0
+        self.tag_tour_max_failed_tours = int(
+            rospy.get_param("~tag_tour_max_failed_tours", 2)
+        )
         self.corner_vantage_inset_m = float(
             rospy.get_param("~corner_vantage_inset_m", 0.55)
         )
@@ -1328,6 +1348,16 @@ class TagTour(smach.State):
         # metric inset can still hug walls when SLAM's early bbox is oversized.
         self.corner_vantage_center_fraction = float(
             rospy.get_param("~corner_vantage_center_fraction", 0.65)
+        )
+        # Hard cap on the adaptive inset. Without this, a SLAM bbox that
+        # accidentally folds in walls outside the actual arena (e.g. corridor
+        # or neighbouring desks) drives the inset to several metres, pushing
+        # vantage goals into unmapped space and making move_base abort with
+        # "off global costmap" / no plan. The cap is in metres and reflects
+        # the largest sensible distance from a corner toward the centre for
+        # AprilTag inspection.
+        self.corner_vantage_inset_max_m = float(
+            rospy.get_param("~corner_vantage_inset_max_m", 1.5)
         )
         self.tag_vantage_wall_margin_m = float(
             rospy.get_param("~tag_vantage_wall_margin_m", 0.45)
@@ -1363,6 +1393,7 @@ class TagTour(smach.State):
             self.corner_vantage_center_fraction * corner_to_center,
         )
         adaptive_inset = min(adaptive_inset, max(0.10, corner_to_center - 0.05))
+        adaptive_inset = min(adaptive_inset, self.corner_vantage_inset_max_m)
         goal = arena.vantage(corner_idx, adaptive_inset)
 
         margin = max(0.0, self.tag_vantage_wall_margin_m)
@@ -1391,6 +1422,7 @@ class TagTour(smach.State):
             mission_data.inspected_tag_corners.clear()
             target_corners = arena.unmapped_corners()
         goals = []
+        any_arrived_this_tour = False
         for idx in target_corners:
             goal, inset = self._corner_goal(arena, idx)
             goals.append((idx, goal, inset))
@@ -1472,7 +1504,27 @@ class TagTour(smach.State):
             except rospy.ROSInterruptException:
                 pass
             mission_data.inspected_tag_corners.add(corner_idx)
+            any_arrived_this_tour = True
             break
+
+        if any_arrived_this_tour:
+            self._consecutive_empty_tours = 0
+            return "tour_progress"
+
+        self._consecutive_empty_tours += 1
+        publish_event(
+            self.event_pub,
+            f"[MISSION] Tour reached no corner ({self._consecutive_empty_tours}/"
+            f"{self.tag_tour_max_failed_tours} consecutive empty tours).",
+        )
+        if self._consecutive_empty_tours >= self.tag_tour_max_failed_tours:
+            publish_event(
+                self.event_pub,
+                "[MISSION] Giving up on corner-vantage discovery; "
+                "proceeding with already-known drop-zone tags.",
+            )
+            self._consecutive_empty_tours = 0
+            return "tour_failed"
         return "tour_progress"
 
 
@@ -2265,7 +2317,10 @@ def main():
         smach.StateMachine.add(
             "TAG_TOUR",
             TagTour(tf_buffer, event_pub),
-            transitions={"tour_progress": "VISUAL_INIT_SCAN"},
+            transitions={
+                "tour_progress": "VISUAL_INIT_SCAN",
+                "tour_failed": "LOCATE_PUCK",
+            },
         )
         smach.StateMachine.add(
             "LOCATE_PUCK",

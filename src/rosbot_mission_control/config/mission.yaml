@@ -49,9 +49,20 @@ tag_corner_snap_distance_m: 0.70
 # park inside the corner pocket (oscillation / no plan with inflated walls).
 corner_vantage_inset_m: 1.35
 corner_vantage_center_fraction: 0.65
+# Hard cap on the inset distance from the corner toward the centre.
+# The SLAM-fitted arena bbox can grow way beyond the real arena when the
+# lidar sees external walls; without this cap the adaptive inset ends up
+# at several metres and vantages land off the global costmap.
+corner_vantage_inset_max_m: 1.5
 tag_vantage_wall_margin_m: 0.45
 tag_tour_use_move_base: true
 tag_tour_goal_timeout_sec: 45.0
+# After this many consecutive tours where every corner failed, give up
+# on per-corner tag discovery and fall through to LOCATE_PUCK with the
+# drop-zone tags already seen during VISUAL_INIT_SCAN. Keeps the mission
+# from spinning forever when the SLAM bbox is wrong or move_base cannot
+# plan to far vantages.
+tag_tour_max_failed_tours: 2
 tag_vantage_yaw_align_timeout_sec: 12.0
 tag_vantage_yaw_tolerance_rad: 0.18
 tag_dwell_sec: 1.5

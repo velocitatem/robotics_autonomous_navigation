@@ -3,9 +3,12 @@ global_costmap:
   robot_base_frame: base_link
   update_frequency: 2.5
   publish_frequency: 1.5
-  rolling_window: true
-  width: 10.0
-  height: 10.0
+  # When SLAM publishes /map, the static_layer resizes the costmap to follow
+  # the grid. A rolling window with a small footprint (the previous 10x10)
+  # caused "goal off global costmap" failures whenever a vantage exceeded
+  # ~5 m from the robot, even though /map already covered the arena. Switch
+  # to a fixed costmap that tracks the SLAM grid via the static layer.
+  rolling_window: false
   resolution: 0.05
   transform_tolerance: 3.5
   plugins:
