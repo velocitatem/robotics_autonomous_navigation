@@ -135,6 +135,51 @@ Important runtime defaults are stored in package-local YAML files:
 - `src/rosbot_dashboard/config/dashboard.yaml` - dashboard topics and viewport sizing.
 - `src/rosbot_navigation/config/*.yaml` - SLAM/move_base/twist_mux and navigation tuning.
 
+## Navigation bringup order (ROSbot)
+
+Start mission only after base, LiDAR, TF, `/map`, and `/move_base` are alive.
+
+SLAM / unknown arena mode:
+
+```bash
+roslaunch rosbot_navigation bringup_navigation.launch use_saved_map:=false
+```
+
+Saved-map mode (`map_server` + `amcl`):
+
+```bash
+roslaunch rosbot_navigation bringup_navigation.launch use_saved_map:=true map_file:=/absolute/path/to/map.yaml
+```
+
+Pre-flight checks:
+
+```bash
+rostopic echo /scan -n 1
+rostopic echo /map -n 1
+rosrun tf tf_echo odom base_link
+rosrun tf tf_echo map odom
+rostopic list | grep /move_base
+```
+
+Then launch mission:
+
+```bash
+roslaunch rosbot_mission_control mission.launch
+```
+
+Or launch the complete stack in one file:
+
+```bash
+roslaunch rosbot_competition_bringup full_mission.launch
+```
+
+If you want strict two-step startup (navigation first, mission second):
+
+```bash
+roslaunch rosbot_competition_bringup competition_system.launch enable_mission:=false
+roslaunch rosbot_mission_control mission.launch
+```
+
 ## Repository layout
 
 ```text

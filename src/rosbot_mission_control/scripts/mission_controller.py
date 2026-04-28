@@ -8,7 +8,6 @@ import tf2_ros
 import math
 import time
 import numpy as np
-from actionlib_msgs.msg import GoalStatusArray
 from geometry_msgs.msg import Twist, Point, PoseStamped
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from nav_msgs.msg import OccupancyGrid
@@ -1019,7 +1018,7 @@ class InitScan(smach.State):
         self.analyzer = analyzer
         self.cmd_pub = rospy.Publisher("/cmd_vel_servo", Twist, queue_size=1)
         self.safety = SafetyMonitor(self.tf_buffer)
-        self.move_base = actionlib.SimpleActionClient("move_base", MoveBaseAction)
+        self.move_base = actionlib.SimpleActionClient("/move_base", MoveBaseAction)
         self.move_base_ready = self.move_base.wait_for_server(rospy.Duration(1.0))
         self.init_spin_yaw_speed = float(rospy.get_param("~init_spin_yaw_speed", 0.5))
         self.init_spin_duration_sec = float(
@@ -1316,7 +1315,7 @@ class DiscoverCorners(smach.State):
 class TagTour(smach.State):
     def __init__(self, tf_buffer, event_pub):
         smach.State.__init__(self, outcomes=["tour_progress"])
-        self.move_base = actionlib.SimpleActionClient("move_base", MoveBaseAction)
+        self.move_base = actionlib.SimpleActionClient("/move_base", MoveBaseAction)
         self.move_base_ready = self.move_base.wait_for_server(rospy.Duration(1.0))
         self.tf_buffer = tf_buffer
         self.event_pub = event_pub
@@ -1482,7 +1481,7 @@ class LocatePuck(smach.State):
         smach.State.__init__(
             self, outcomes=["found_puck", "continue_search", "all_done"]
         )
-        self.move_base = actionlib.SimpleActionClient("move_base", MoveBaseAction)
+        self.move_base = actionlib.SimpleActionClient("/move_base", MoveBaseAction)
         self.move_base_ready = self.move_base.wait_for_server(rospy.Duration(1.0))
         self.tf_buffer = tf_buffer
         self.event_pub = event_pub
@@ -1608,7 +1607,7 @@ class LocatePuck(smach.State):
 class Approach(smach.State):
     def __init__(self, tf_buffer, event_pub):
         smach.State.__init__(self, outcomes=["arrived", "failed"])
-        self.move_base = actionlib.SimpleActionClient("move_base", MoveBaseAction)
+        self.move_base = actionlib.SimpleActionClient("/move_base", MoveBaseAction)
         self.move_base_ready = self.move_base.wait_for_server(rospy.Duration(1.0))
         self.tf_buffer = tf_buffer
         self.event_pub = event_pub
@@ -1908,7 +1907,7 @@ class Grab(smach.State):
 class Deliver(smach.State):
     def __init__(self, tf_buffer, event_pub):
         smach.State.__init__(self, outcomes=["delivered", "failed"])
-        self.move_base = actionlib.SimpleActionClient("move_base", MoveBaseAction)
+        self.move_base = actionlib.SimpleActionClient("/move_base", MoveBaseAction)
         self.move_base_ready = self.move_base.wait_for_server(rospy.Duration(1.0))
         self.release_srv = rospy.ServiceProxy("/release_puck", Trigger)
         self.tf_buffer = tf_buffer
@@ -2103,28 +2102,15 @@ def _on_scan(msg):
 
 
 def _wait_for_move_base(timeout_sec):
-    client = actionlib.SimpleActionClient("move_base", MoveBaseAction)
+    client = actionlib.SimpleActionClient("/move_base", MoveBaseAction)
     rospy.loginfo(
-        "[MISSION] Waiting up to %.1fs for move_base action server...", timeout_sec
+        "[MISSION] Waiting up to %.1fs for /move_base action server...", timeout_sec
     )
-    deadline = time.monotonic() + timeout_sec
-    while not rospy.is_shutdown():
-        if client.wait_for_server(rospy.Duration(1.5)):
-            rospy.loginfo("[MISSION] move_base action server is up.")
-            return True
-        try:
-            rospy.wait_for_message("/move_base/status", GoalStatusArray, timeout=0.8)
-            rospy.logwarn(
-                "[MISSION] move_base status topic is live; proceeding with navigation."
-            )
-            return True
-        except rospy.ROSException:
-            pass
-        if time.monotonic() >= deadline:
-            rospy.logwarn(
-                "[MISSION] move_base did not come up in time; falling back to reactive servo."
-            )
-            return False
+    if client.wait_for_server(rospy.Duration(timeout_sec)):
+        rospy.loginfo("[MISSION] /move_base action server is up.")
+        return True
+
+    rospy.logwarn("[MISSION] /move_base action server unavailable.")
     return False
 
 
