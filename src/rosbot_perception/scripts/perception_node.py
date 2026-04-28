@@ -80,6 +80,15 @@ class PerceptionNode:
         self.last_detection = {}
         self.object_frames = {}
 
+        # Clock-skew diagnostics: tolerance in seconds beyond which a
+        # one-time loud warning fires telling the operator NTP is broken.
+        # Smaller skews are absorbed by the TF buffer / approx-time
+        # synchronizer slop (0.08 s) and the node's tf_lookup_timeout.
+        self.clock_skew_warn_threshold_sec = float(
+            rospy.get_param("~clock_skew_warn_threshold_sec", 1.0)
+        )
+        self._clock_skew_warned = False
+
         self.object_tf_broadcaster = tf2_ros.TransformBroadcaster()
 
         self.det_pub = rospy.Publisher(
@@ -168,6 +177,14 @@ class PerceptionNode:
             if self.camera_frame_override
             else color_msg.header.frame_id
         )
+
+        if not self._clock_skew_warned:
+            try:
+                self._maybe_warn_clock_skew(
+                    (rospy.Time.now() - timestamp).to_sec()
+                )
+            except Exception:
+                pass
 
         puck_candidates = self._detect_pucks(overlay)
         for candidate in puck_candidates:
@@ -329,6 +346,31 @@ class PerceptionNode:
 
         return detections
 
+    def _maybe_warn_clock_skew(self, skew_sec):
+        """One-shot loud warning when camera/ROS clocks disagree badly.
+
+        Distinguishes between a usable buffer/timeout slop (sub-second) and a
+        true clock-sync problem that the operator must fix on their hosts.
+        """
+        try:
+            skew_value = float(skew_sec)
+        except (TypeError, ValueError):
+            return
+        if not math.isfinite(skew_value):
+            return
+        if abs(skew_value) < self.clock_skew_warn_threshold_sec:
+            return
+        if self._clock_skew_warned:
+            return
+        self._clock_skew_warned = True
+        rospy.logerr(
+            "[VISION] Camera stamps lag ROS time by %.1fs. This is a host "
+            "clock-sync problem (NTP/chrony), not a perception bug. "
+            "Sync clocks across robot, workstation, and any sensor servers "
+            "before TF projection will work.",
+            skew_value,
+        )
+
     def _publish_spatial_detection(
         self,
         overlay,
@@ -349,12 +391,19 @@ class PerceptionNode:
             transform = self.tf_buffer.lookup_transform(
                 self.map_frame, camera_frame, stamp, tf_timeout
             )
-        except tf2_ros.ExtrapolationException:
+        except tf2_ros.ExtrapolationException as exc:
             # Intentional: do not fall back to Time(0), because latest-TF
             # projection while turning/skidding can mis-map puck/tag positions.
+            try:
+                skew_sec = (rospy.Time.now() - stamp).to_sec()
+            except Exception:
+                skew_sec = float("nan")
+            self._maybe_warn_clock_skew(skew_sec)
             rospy.logwarn_throttle(
                 2.0,
-                "[VISION] Camera/TF timestamps are out of sync; dropping projection for this frame.",
+                "[VISION] Camera/TF timestamps are out of sync (skew=%.3fs); dropping projection. (%s)",
+                skew_sec,
+                str(exc).splitlines()[0] if str(exc) else "ExtrapolationException",
             )
             return
         except (

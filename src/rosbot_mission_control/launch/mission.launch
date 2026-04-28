@@ -1,0 +1,6 @@
+<launch>
+  <arg name="config" default="$(find rosbot_mission_control)/config/mission.yaml"/>
+  <include file="$(find rosbot_mission_control)/launch/mission_controller.launch">
+    <arg name="config" value="$(arg config)"/>
+  </include>
+</launch>

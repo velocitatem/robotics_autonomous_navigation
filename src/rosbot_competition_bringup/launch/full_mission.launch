@@ -1,0 +1,32 @@
+<launch>
+  <arg name="use_saved_map" default="false"/>
+  <arg name="map_file" default=""/>
+  <arg name="use_slam_toolbox" default="true"/>
+  <arg name="enable_ir_safety" default="true"/>
+  <arg name="enable_laser_nav_safety" default="true"/>
+  <arg name="enable_scan_normalizer" default="false"/>
+  <arg name="scan_normalizer_input_topic" default="/scan_raw"/>
+  <arg name="scan_normalizer_output_topic" default="/scan"/>
+  <arg name="enable_inspector" default="true"/>
+  <arg name="rviz_args" default=""/>
+  <arg name="enable_dashboard" default="false"/>
+  <arg name="enable_sim_manipulation" default="false"/>
+
+  <include file="$(find rosbot_competition_bringup)/launch/competition_system.launch">
+    <arg name="enable_slam" value="$(eval 'false' if str(arg('use_saved_map')).lower() == 'true' else 'true')"/>
+    <arg name="enable_move_base" value="true"/>
+    <arg name="use_slam_toolbox" value="$(arg use_slam_toolbox)"/>
+    <arg name="use_saved_map" value="$(arg use_saved_map)"/>
+    <arg name="map_file" value="$(arg map_file)"/>
+    <arg name="enable_ir_safety" value="$(arg enable_ir_safety)"/>
+    <arg name="enable_laser_nav_safety" value="$(arg enable_laser_nav_safety)"/>
+    <arg name="enable_scan_normalizer" value="$(arg enable_scan_normalizer)"/>
+    <arg name="scan_normalizer_input_topic" value="$(arg scan_normalizer_input_topic)"/>
+    <arg name="scan_normalizer_output_topic" value="$(arg scan_normalizer_output_topic)"/>
+    <arg name="enable_mission" value="true"/>
+    <arg name="enable_inspector" value="$(arg enable_inspector)"/>
+    <arg name="rviz_args" value="$(arg rviz_args)"/>
+    <arg name="enable_dashboard" value="$(arg enable_dashboard)"/>
+    <arg name="enable_sim_manipulation" value="$(arg enable_sim_manipulation)"/>
+  </include>
+</launch>

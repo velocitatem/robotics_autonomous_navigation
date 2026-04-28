@@ -180,6 +180,65 @@ roslaunch rosbot_competition_bringup competition_system.launch enable_mission:=f
 roslaunch rosbot_mission_control mission.launch
 ```
 
+### Headless / SSH usage
+
+The bringup launches an RViz `competition_inspector` window. On SSH sessions
+without X11 forwarding (no `DISPLAY`) the bringup automatically skips RViz, so
+you do not need to do anything. To force-disable it explicitly:
+
+```bash
+roslaunch rosbot_competition_bringup competition_system.launch enable_inspector:=false
+```
+
+If you do want the GUI over SSH, log in with `ssh -X` (or `-Y`) so `DISPLAY`
+is set, then keep the default `enable_inspector:=true`.
+
+### Lidar beam-count normalization
+
+If `slam_toolbox` (Karto) spams warnings like
+`LaserRangeScan contains 1947 range readings, expected 1946`, your lidar
+driver is publishing an inconsistent number of rays across messages. Karto
+locks onto the count from the first scan and rejects mismatched ones.
+
+Mitigation without touching the driver: enable the bundled normalizer. It
+re-publishes a fixed-length `/scan` so SLAM, costmaps, and the safety
+nodes all see a stable beam count.
+
+1. Remap the lidar driver to publish on `/scan_raw` (driver-specific).
+2. Launch with the normalizer enabled:
+   ```bash
+   roslaunch rosbot_competition_bringup competition_system.launch \
+       enable_scan_normalizer:=true
+   ```
+   Override topics with `scan_normalizer_input_topic:=...` and
+   `scan_normalizer_output_topic:=...` if you need different names.
+
+The node lives in `rosbot_navigation/scripts/scan_normalizer.py` and pads or
+truncates `ranges`/`intensities` to the count locked from the first scan,
+recomputing `angle_max` to stay self-consistent.
+
+### Time synchronization across machines
+
+`competition_system.launch` is typically run with `ROS_MASTER_URI` pointing to
+the robot. If the workstation, robot, and any sensors disagree on wall-clock
+time, you will see TF warnings such as:
+
+- `TF_OLD_DATA ignoring data from the past for frame camera_depth_frame`
+- `[VISION] Camera/TF timestamps are out of sync; dropping projection for this frame.`
+
+This is almost always a clock skew problem, not a code bug. Make sure every
+machine in the ROS graph runs `chrony` or `ntpd` against the same source:
+
+```bash
+sudo apt install -y chrony
+sudo systemctl enable --now chronyd
+chronyc tracking
+```
+
+If the robot is offline, run a local NTP server on the workstation and point
+the robot's chrony at it. Until the clocks agree, perception will keep
+dropping projections (intentional safety: stale TFs would mis-place pucks).
+
 ## Repository layout
 
 ```text

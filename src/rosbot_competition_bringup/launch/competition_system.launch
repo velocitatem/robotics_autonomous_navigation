@@ -6,7 +6,13 @@
   <arg name="map_file" default=""/>
   <arg name="enable_ir_safety" default="true"/>
   <arg name="enable_laser_nav_safety" default="true"/>
+  <arg name="enable_scan_normalizer" default="false"/>
+  <arg name="scan_normalizer_input_topic" default="/scan_raw"/>
+  <arg name="scan_normalizer_output_topic" default="/scan"/>
   <arg name="enable_mission" default="true"/>
+  <!-- RViz inspector. Only spawns when both enable_inspector is true AND a
+       DISPLAY is available, so headless SSH sessions do not get a Qt crash
+       (`qt.qpa.xcb: could not connect to display`) that takes down the node. -->
   <arg name="enable_inspector" default="true"/>
   <!-- Optional extra args, e.g. rviz_args:="-d /path/to/config.rviz" -->
   <arg name="rviz_args" default=""/>
@@ -21,6 +27,9 @@
     <arg name="map_file" value="$(arg map_file)"/>
     <arg name="enable_ir_safety" value="$(arg enable_ir_safety)"/>
     <arg name="enable_laser_nav_safety" value="$(arg enable_laser_nav_safety)"/>
+    <arg name="enable_scan_normalizer" value="$(arg enable_scan_normalizer)"/>
+    <arg name="scan_normalizer_input_topic" value="$(arg scan_normalizer_input_topic)"/>
+    <arg name="scan_normalizer_output_topic" value="$(arg scan_normalizer_output_topic)"/>
   </include>
 
   <include file="$(find rosbot_perception)/launch/perception.launch"/>
@@ -28,6 +37,8 @@
     <arg name="use_sim" value="$(arg enable_sim_manipulation)"/>
   </include>
   <include if="$(arg enable_mission)" file="$(find rosbot_mission_control)/launch/mission_controller.launch"/>
-  <node if="$(arg enable_inspector)" pkg="rviz" type="rviz" name="competition_inspector" args="$(arg rviz_args)" output="screen"/>
+  <node if="$(eval str(arg('enable_inspector')).lower() == 'true' and str(optenv('DISPLAY', '')).strip() != '')"
+        pkg="rviz" type="rviz" name="competition_inspector"
+        args="$(arg rviz_args)" output="screen" required="false"/>
   <include if="$(arg enable_dashboard)" file="$(find rosbot_dashboard)/launch/dashboard.launch"/>
 </launch>

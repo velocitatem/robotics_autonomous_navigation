@@ -1,0 +1,22 @@
+<launch>
+  <!--
+    Republish a beam-count-stable /scan for slam_toolbox / Karto.
+
+    To use this, remap the lidar driver to publish on input_topic
+    (default /scan_raw) and consumers will see the normalized stream on
+    output_topic (default /scan). Disabled by default; enable from
+    competition_system.launch via enable_scan_normalizer:=true.
+  -->
+  <arg name="input_topic" default="/scan_raw"/>
+  <arg name="output_topic" default="/scan"/>
+  <arg name="expected_count" default="0"/>
+  <arg name="fix_count" default="true"/>
+
+  <node pkg="rosbot_navigation" type="scan_normalizer.py"
+        name="scan_normalizer" output="screen">
+    <param name="input_topic" value="$(arg input_topic)"/>
+    <param name="output_topic" value="$(arg output_topic)"/>
+    <param name="expected_count" value="$(arg expected_count)"/>
+    <param name="fix_count" value="$(arg fix_count)"/>
+  </node>
+</launch>
