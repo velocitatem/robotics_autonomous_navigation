@@ -26,6 +26,16 @@ class IRSafetyStop:
             self.input_topic, Range, self._on_range, queue_size=1
         )
         self.timer = rospy.Timer(rospy.Duration(0.1), self._publish_stop)
+        rospy.loginfo(
+            "[SAFETY] IR stop watching %s (stop=%.3f m, clear=%.3f m, "
+            "filter_window=%d, activate_samples=%d, clear_samples=%d)",
+            self.input_topic,
+            self.stop_distance,
+            self.clear_distance,
+            self.filter_window,
+            self.activate_samples,
+            self.clear_samples,
+        )
 
     def _filtered_reading(self):
         ordered = sorted(self.readings)

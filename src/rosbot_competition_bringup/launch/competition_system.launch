@@ -5,7 +5,13 @@
   <arg name="use_saved_map" default="false"/>
   <arg name="map_file" default=""/>
   <arg name="enable_ir_safety" default="true"/>
+  <arg name="ir_stop_distance" default="0.16"/>
+  <arg name="ir_clear_distance" default="0.20"/>
+  <arg name="ir_filter_window" default="7"/>
+  <arg name="ir_activate_samples" default="4"/>
+  <arg name="ir_clear_samples" default="3"/>
   <arg name="enable_laser_nav_safety" default="true"/>
+  <arg name="laser_nav_safety_scan_max_age_sec" default="1.2"/>
   <arg name="enable_scan_normalizer" default="false"/>
   <arg name="scan_normalizer_input_topic" default="/scan"/>
   <arg name="scan_normalizer_output_topic" default="/scan_normalized"/>
@@ -26,7 +32,13 @@
     <arg name="use_saved_map" value="$(arg use_saved_map)"/>
     <arg name="map_file" value="$(arg map_file)"/>
     <arg name="enable_ir_safety" value="$(arg enable_ir_safety)"/>
+    <arg name="ir_stop_distance" value="$(arg ir_stop_distance)"/>
+    <arg name="ir_clear_distance" value="$(arg ir_clear_distance)"/>
+    <arg name="ir_filter_window" value="$(arg ir_filter_window)"/>
+    <arg name="ir_activate_samples" value="$(arg ir_activate_samples)"/>
+    <arg name="ir_clear_samples" value="$(arg ir_clear_samples)"/>
     <arg name="enable_laser_nav_safety" value="$(arg enable_laser_nav_safety)"/>
+    <arg name="laser_nav_safety_scan_max_age_sec" value="$(arg laser_nav_safety_scan_max_age_sec)"/>
     <arg name="enable_scan_normalizer" value="$(arg enable_scan_normalizer)"/>
     <arg name="scan_normalizer_input_topic" value="$(arg scan_normalizer_input_topic)"/>
     <arg name="scan_normalizer_output_topic" value="$(arg scan_normalizer_output_topic)"/>

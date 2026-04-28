@@ -33,6 +33,7 @@ class MissionData:
         self.arena = None
         self.initial_robot_pose = None
         self.inspected_tag_corners = set()
+        self.corner_discovery_attempts = 0
         self.scan_points = []
         # Color of the puck currently in the gripper, or None when empty.
         # Used so LOCATE_PUCK / APPROACH cannot re-target the puck the robot
@@ -1264,6 +1265,9 @@ class DiscoverCorners(smach.State):
         self.tag_corner_snap_distance_m = float(
             rospy.get_param("~tag_corner_snap_distance_m", 0.50)
         )
+        self.corner_discovery_retry_limit = int(
+            rospy.get_param("~corner_discovery_retry_limit", 2)
+        )
 
     def execute(self, userdata):
         publish_event(self.event_pub, "[MISSION] State: DISCOVER_CORNERS")
@@ -1299,6 +1303,13 @@ class DiscoverCorners(smach.State):
                     self.event_pub,
                     f"[MISSION] Mapped {color} tag to arena corner {corner_idx}.",
                 )
+            else:
+                corner_idx, distance = mission_data.arena.nearest_corner(point)
+                publish_event(
+                    self.event_pub,
+                    f"[MISSION] {color} tag is {distance:.2f} m from nearest arena "
+                    f"corner {corner_idx}; snap limit is {self.tag_corner_snap_distance_m:.2f} m.",
+                )
 
         known = len(
             [
@@ -1312,6 +1323,36 @@ class DiscoverCorners(smach.State):
             f"[MISSION] Corner tags known: {known}/{self.required_drop_zone_count}.",
         )
         if known >= self.required_drop_zone_count:
+            mission_data.corner_discovery_attempts = 0
+            return "tags_complete"
+        observed = len(
+            [
+                color
+                for color in mission_data.target_order
+                if color in mission_data.drop_zone_memory
+            ]
+        )
+        if observed >= self.required_drop_zone_count:
+            publish_event(
+                self.event_pub,
+                "[MISSION] All drop-zone tags have direct TF/memory; proceeding "
+                "without corner snap fallback.",
+            )
+            mission_data.corner_discovery_attempts = 0
+            return "tags_complete"
+        mission_data.corner_discovery_attempts += 1
+        if (
+            self.corner_discovery_retry_limit >= 0
+            and observed > 0
+            and mission_data.corner_discovery_attempts > self.corner_discovery_retry_limit
+        ):
+            publish_event(
+                self.event_pub,
+                f"[MISSION] Corner tag tour made no progress after "
+                f"{mission_data.corner_discovery_attempts - 1} attempts; proceeding "
+                f"with {observed}/{self.required_drop_zone_count} observed drop-zone tags.",
+            )
+            mission_data.corner_discovery_attempts = 0
             return "tags_complete"
         publish_event(
             self.event_pub,

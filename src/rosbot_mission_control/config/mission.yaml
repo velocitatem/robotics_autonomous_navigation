@@ -45,6 +45,7 @@ bbox_min_perimeter_cells: 60
 bbox_min_free_cells: 40
 
 tag_corner_snap_distance_m: 0.70
+corner_discovery_retry_limit: 2
 # Stand well inside the arena toward center so move_base/servo are not trying to
 # park inside the corner pocket (oscillation / no plan with inflated walls).
 corner_vantage_inset_m: 1.35

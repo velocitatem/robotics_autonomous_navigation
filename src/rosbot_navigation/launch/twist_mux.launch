@@ -2,6 +2,9 @@
   <arg name="enable_ir_safety" default="true"/>
   <arg name="ir_stop_distance" default="0.16"/>
   <arg name="ir_clear_distance" default="0.20"/>
+  <arg name="ir_filter_window" default="7"/>
+  <arg name="ir_activate_samples" default="4"/>
+  <arg name="ir_clear_samples" default="3"/>
 
   <node pkg="twist_mux" type="twist_mux" name="twist_mux" output="screen">
     <rosparam command="load" file="$(find rosbot_navigation)/config/twist_mux.yaml"/>
@@ -11,5 +14,8 @@
   <node if="$(arg enable_ir_safety)" pkg="rosbot_navigation" type="ir_safety_stop.py" name="ir_safety_stop" output="screen">
     <param name="stop_distance" value="$(arg ir_stop_distance)"/>
     <param name="clear_distance" value="$(arg ir_clear_distance)"/>
+    <param name="filter_window" value="$(arg ir_filter_window)"/>
+    <param name="activate_samples" value="$(arg ir_activate_samples)"/>
+    <param name="clear_samples" value="$(arg ir_clear_samples)"/>
   </node>
 </launch>

@@ -5,7 +5,13 @@
   <arg name="use_saved_map" default="false"/>
   <arg name="map_file" default=""/>
   <arg name="enable_ir_safety" default="true"/>
+  <arg name="ir_stop_distance" default="0.16"/>
+  <arg name="ir_clear_distance" default="0.20"/>
+  <arg name="ir_filter_window" default="7"/>
+  <arg name="ir_activate_samples" default="4"/>
+  <arg name="ir_clear_samples" default="3"/>
   <arg name="enable_laser_nav_safety" default="true"/>
+  <arg name="laser_nav_safety_scan_max_age_sec" default="1.2"/>
   <!-- When the lidar driver publishes inconsistent beam counts (e.g. 1946 vs
        1947), enable this to normalize /scan before slam_toolbox sees it.
        The normalizer subscribes to /scan and republishes /scan_normalized,
@@ -46,9 +52,15 @@
 
   <include if="$(arg enable_move_base)" file="$(find rosbot_navigation)/launch/move_base.launch">
     <arg name="enable_laser_nav_safety" value="$(arg enable_laser_nav_safety)"/>
+    <arg name="laser_nav_safety_scan_max_age_sec" value="$(arg laser_nav_safety_scan_max_age_sec)"/>
     <arg name="map_service" value="$(eval '/static_map' if str(arg('use_saved_map')).lower() == 'true' else ('/slam_toolbox/dynamic_map' if str(arg('use_slam_toolbox')).lower() == 'true' else '/static_map'))"/>
   </include>
   <include file="$(find rosbot_navigation)/launch/twist_mux.launch">
     <arg name="enable_ir_safety" value="$(arg enable_ir_safety)"/>
+    <arg name="ir_stop_distance" value="$(arg ir_stop_distance)"/>
+    <arg name="ir_clear_distance" value="$(arg ir_clear_distance)"/>
+    <arg name="ir_filter_window" value="$(arg ir_filter_window)"/>
+    <arg name="ir_activate_samples" value="$(arg ir_activate_samples)"/>
+    <arg name="ir_clear_samples" value="$(arg ir_clear_samples)"/>
   </include>
 </launch>
